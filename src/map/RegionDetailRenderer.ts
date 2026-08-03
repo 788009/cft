@@ -3,7 +3,12 @@ import { defaultConfig, MAP_STYLES } from '@/config';
 import { loadGeoJSON } from '@/data/fetcher';
 import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
-import { getInfoRectangle, SchoolOverlay } from '@/map/SchoolOverlay';
+import { SchoolOverlay } from '@/map/SchoolOverlay';
+import {
+  getDefaultInfoRectanglePlacement,
+  getInfoRectangle,
+  type InfoRectanglePlacement,
+} from '@/map/InfoRectangle';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
 import {
   getRegionAdcodesWithSchools,
@@ -29,6 +34,7 @@ export class RegionDetailRenderer {
   private labelLevel: RegionLabelLevel = 'city';
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
+  private infoRectanglePlacement: InfoRectanglePlacement;
   private destroyed = false;
 
   constructor(
@@ -37,10 +43,12 @@ export class RegionDetailRenderer {
     showRegionNames = defaultConfig.showRegionNames,
     onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools,
     showInfoRectangle = defaultConfig.showInfoRectangle,
+    infoRectanglePlacement = getDefaultInfoRectanglePlacement(),
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
     this.onlyShowRegionNamesWithSchools = onlyShowRegionNamesWithSchools;
+    this.infoRectanglePlacement = infoRectanglePlacement;
     this.svg = select(container)
       .append('svg')
       .attr('class', 'region-detail-map')
@@ -52,7 +60,11 @@ export class RegionDetailRenderer {
     this.labelsLayer = this.svg.append('g')
       .attr('class', 'region-detail-labels')
       .style('pointer-events', 'none');
-    this.overlay = new SchoolOverlay(this.svg, { onStudentSelect, showInfoRectangle });
+    this.overlay = new SchoolOverlay(this.svg, {
+      onStudentSelect,
+      showInfoRectangle,
+      infoRectanglePlacement,
+    });
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
   }
@@ -92,6 +104,12 @@ export class RegionDetailRenderer {
 
   public setShowInfoRectangle(show: boolean): void {
     this.overlay.setShowInfoRectangle(show);
+  }
+
+  public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
+    this.infoRectanglePlacement = placement;
+    this.overlay.setInfoRectanglePlacement(placement);
+    this.updateScene();
   }
 
   public destroy(): void {
@@ -160,7 +178,7 @@ export class RegionDetailRenderer {
   }
 
   private createProjection(width: number, height: number): GeoProjection {
-    const infoRect = getInfoRectangle(width, height);
+    const infoRect = getInfoRectangle(width, height, this.infoRectanglePlacement);
     const inset = Math.min(defaultConfig.canvasMargin, infoRect.width / 8, infoRect.height / 8);
     return geoMercator().fitExtent([
       [infoRect.x + inset, infoRect.y + inset],

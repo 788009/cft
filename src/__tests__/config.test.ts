@@ -9,6 +9,12 @@ describe('App config', () => {
 
   it('keeps adaptive label scaling in the centralized config', () => {
     expect(defaultConfig.labelScale).toEqual({ min: 0.5, step: 0.1 });
+    expect(defaultConfig.infoRectangleEditor).toEqual({
+      minWidth: 120,
+      minHeight: 80,
+      handleSize: 12,
+      handleHitSize: 44,
+    });
   });
 
   it('keeps settings placement and the default interaction mode configurable', () => {

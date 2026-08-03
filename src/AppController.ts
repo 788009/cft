@@ -6,6 +6,11 @@ import { DetailController } from '@/details/DetailController';
 import { defaultConfig, type MapInteractionMode } from '@/config';
 import { SettingsController } from '@/settings/SettingsController';
 import { ThemeController } from '@/theme/ThemeController';
+import {
+  getDefaultInfoRectanglePlacement,
+  type InfoRectanglePlacement,
+} from '@/map/InfoRectangle';
+import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorController';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
@@ -14,11 +19,14 @@ export class AppController {
   private readonly viewState: ViewState;
   private readonly details: DetailController;
   private readonly settings: SettingsController;
+  private readonly infoRectangleEditor: InfoRectangleEditorController;
   private readonly theme: ThemeController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private showRegionNames = defaultConfig.showRegionNames;
   private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
   private showInfoRectangle = defaultConfig.showInfoRectangle;
+  private infoRectanglePlacement = getDefaultInfoRectanglePlacement();
+  private infoRectangleEditing = false;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
   private renderVersion = 0;
@@ -34,8 +42,10 @@ export class AppController {
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
+      this.infoRectanglePlacement,
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
+    this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
     this.settings = new SettingsController(
       this.uiContainer,
       this.interactionMode,
@@ -63,6 +73,7 @@ export class AppController {
         this.renderer?.setShowInfoRectangle(show);
         this.details.setShowInfoRectangle(show);
       },
+      () => this.beginInfoRectangleEditing(),
     );
   }
 
@@ -81,6 +92,7 @@ export class AppController {
     this.renderer?.destroy();
     this.renderer = null;
     this.details.closeAll();
+    this.infoRectangleEditor.close();
     this.settings.destroy();
     this.theme.destroy();
   }
@@ -100,6 +112,7 @@ export class AppController {
     this.uiContainer.classList.toggle('hidden', isPortrait);
 
     if (isPortrait) {
+      this.finishInfoRectangleEditing();
       this.renderVersion += 1;
       this.renderer?.destroy();
       this.renderer = null;
@@ -130,6 +143,11 @@ export class AppController {
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,
+        infoRectanglePlacement: this.infoRectanglePlacement,
+        onInfoRectanglePlacementChange: (placement) => {
+          this.infoRectanglePlacement = placement;
+          this.details.setInfoRectanglePlacement(placement);
+        },
       });
       this.renderer = renderer;
       renderer.setData(data);
@@ -151,6 +169,33 @@ export class AppController {
       });
     }
     return this.dataPromise;
+  }
+
+  private beginInfoRectangleEditing(): void {
+    if (!this.renderer || this.infoRectangleEditing) return;
+    this.infoRectangleEditing = true;
+    this.details.closeAll();
+    this.settings.setButtonVisible(false);
+    this.renderer.setInfoRectangleEditing(true);
+    this.infoRectangleEditor.open({
+      onConfirm: () => this.finishInfoRectangleEditing(),
+      onReset: () => this.resetInfoRectanglePlacement(),
+    });
+  }
+
+  private finishInfoRectangleEditing(): void {
+    if (!this.infoRectangleEditing) return;
+    this.infoRectangleEditing = false;
+    this.renderer?.setInfoRectangleEditing(false);
+    this.infoRectangleEditor.close();
+    this.settings.setButtonVisible(true);
+  }
+
+  private resetInfoRectanglePlacement(): void {
+    const placement: InfoRectanglePlacement = getDefaultInfoRectanglePlacement();
+    this.infoRectanglePlacement = placement;
+    this.renderer?.setInfoRectanglePlacement(placement);
+    this.details.setInfoRectanglePlacement(placement);
   }
 
   private requireElement(id: string): HTMLElement {

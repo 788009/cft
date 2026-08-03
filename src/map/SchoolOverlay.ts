@@ -15,6 +15,15 @@ import {
   type Rect,
 } from '@/logic/layout';
 import { getProjectedPoint } from '@/map/projection';
+import {
+  getDefaultInfoRectanglePlacement,
+  getInfoRectangle,
+  getInfoRectanglePlacement,
+  moveInfoRectangle,
+  resizeInfoRectangle,
+  type InfoRectanglePlacement,
+  type InfoRectangleResizeHandle,
+} from '@/map/InfoRectangle';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
 
 interface LabelScene {
@@ -36,6 +45,8 @@ interface ForeignPanelScene {
 export interface SchoolOverlayOptions {
   onStudentSelect?: (student: Student) => void;
   showInfoRectangle?: boolean;
+  infoRectanglePlacement?: InfoRectanglePlacement;
+  onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
 }
 
 function textWidth(text: string, fontSize: number): number {
@@ -55,17 +66,6 @@ function labelSize(school: SchoolGroup): { width: number; height: number } {
     height: style.paddingY * 2 + style.lineHeight * (
       Math.ceil(school.students.length / style.studentsPerRow) + 1
     ),
-  };
-}
-
-export function getInfoRectangle(width: number, height: number): Rect {
-  const rectWidth = width * defaultConfig.infoRectangleWidthRatio;
-  const rectHeight = height * defaultConfig.infoRectangleHeightRatio;
-  return {
-    x: (width - rectWidth) / 2,
-    y: (height - rectHeight) / 2,
-    width: rectWidth,
-    height: rectHeight,
   };
 }
 
@@ -113,10 +113,22 @@ export class SchoolOverlay {
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly foreignLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly editorLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly editorBlocker: Selection<SVGRectElement, unknown, null, undefined>;
+  private readonly editorMoveSurface: Selection<SVGRectElement, unknown, null, undefined>;
+  private readonly editorHandles: Selection<SVGGElement, InfoRectangleResizeHandle, SVGGElement, unknown>;
   private domesticSchools: SchoolGroup[] = [];
   private foreignSchools: SchoolGroup[] = [];
   private readonly positionHistory = new Map<string, Rect>();
   private readonly onStudentSelect?: (student: Student) => void;
+  private readonly onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
+  private infoRectanglePlacement: InfoRectanglePlacement;
+  private showInfoRectangle: boolean;
+  private infoRectangleEditing = false;
+  private width = 0;
+  private height = 0;
+  private currentInfoRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
+  private endEditorDrag: (() => void) | null = null;
   private hoveredSchoolId: string | null = null;
   private hoveredRegion: { level: 'province' | 'city'; adcode: string } | null = null;
   private touchSelectedSchoolId: string | null = null;
@@ -134,6 +146,10 @@ export class SchoolOverlay {
     options: SchoolOverlayOptions = {},
   ) {
     this.onStudentSelect = options.onStudentSelect;
+    this.onInfoRectanglePlacementChange = options.onInfoRectanglePlacementChange;
+    this.infoRectanglePlacement = options.infoRectanglePlacement
+      ?? getDefaultInfoRectanglePlacement();
+    this.showInfoRectangle = options.showInfoRectangle ?? defaultConfig.showInfoRectangle;
     this.root = svg.append('g')
       .attr('class', 'school-overlay')
       .attr('data-label-spacing', defaultConfig.labelSpacing)
@@ -145,14 +161,61 @@ export class SchoolOverlay {
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '4 5')
       .attr('vector-effect', 'non-scaling-stroke')
-      .style(
-        'display',
-        (options.showInfoRectangle ?? defaultConfig.showInfoRectangle) ? '' : 'none',
-      );
+      .style('pointer-events', 'none');
     this.linesLayer = this.root.append('g').attr('class', 'school-lines');
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
     this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
+    this.editorLayer = this.root.append('g')
+      .attr('class', 'info-rectangle-editor')
+      .attr('data-testid', 'info-rectangle-editor')
+      .style('display', 'none')
+      .style('pointer-events', 'none')
+      .style('touch-action', 'none');
+    this.editorBlocker = this.editorLayer.append('rect')
+      .attr('class', 'info-rectangle-editor-blocker')
+      .attr('fill', 'transparent')
+      .style('pointer-events', 'all')
+      .style('cursor', 'default');
+    this.editorMoveSurface = this.editorLayer.append('rect')
+      .attr('class', 'info-rectangle-move-surface')
+      .attr('data-testid', 'info-rectangle-move-surface')
+      .attr('fill', 'transparent')
+      .style('pointer-events', 'all')
+      .style('cursor', 'move')
+      .on('pointerdown', (event: PointerEvent) => this.beginEditorDrag(event));
+    const handles: InfoRectangleResizeHandle[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+    this.editorHandles = this.editorLayer.selectAll<SVGGElement, InfoRectangleResizeHandle>(
+      'g.info-rectangle-handle',
+    )
+      .data(handles)
+      .enter()
+      .append('g')
+      .attr('class', 'info-rectangle-handle')
+      .attr('data-handle', (handle) => handle)
+      .style('pointer-events', 'all')
+      .style('cursor', (handle) => `${handle}-resize`)
+      .on('pointerdown', (event: PointerEvent, handle) => this.beginEditorDrag(event, handle));
+    this.editorHandles.append('rect')
+      .attr('class', 'info-rectangle-handle-hit')
+      .attr('x', -defaultConfig.infoRectangleEditor.handleHitSize / 2)
+      .attr('y', -defaultConfig.infoRectangleEditor.handleHitSize / 2)
+      .attr('width', defaultConfig.infoRectangleEditor.handleHitSize)
+      .attr('height', defaultConfig.infoRectangleEditor.handleHitSize)
+      .attr('fill', 'transparent');
+    this.editorHandles.append('rect')
+      .attr('class', 'info-rectangle-handle-visual')
+      .attr('x', -defaultConfig.infoRectangleEditor.handleSize / 2)
+      .attr('y', -defaultConfig.infoRectangleEditor.handleSize / 2)
+      .attr('width', defaultConfig.infoRectangleEditor.handleSize)
+      .attr('height', defaultConfig.infoRectangleEditor.handleSize)
+      .attr('rx', 2)
+      .attr('fill', '#0f766e')
+      .attr('stroke', '#ffffff')
+      .attr('stroke-width', 2)
+      .attr('vector-effect', 'non-scaling-stroke')
+      .style('pointer-events', 'none');
+    this.syncInfoRectangleVisibility();
     document.addEventListener('pointerdown', this.handleDocumentPointerDown, true);
   }
 
@@ -161,7 +224,26 @@ export class SchoolOverlay {
   }
 
   public setShowInfoRectangle(show: boolean): void {
-    this.infoRectangle.style('display', show ? '' : 'none');
+    this.showInfoRectangle = show;
+    this.syncInfoRectangleVisibility();
+  }
+
+  public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
+    this.infoRectanglePlacement = { ...placement };
+    this.updateInfoRectangleGeometry();
+  }
+
+  public getInfoRectanglePlacement(): InfoRectanglePlacement {
+    return { ...this.infoRectanglePlacement };
+  }
+
+  public setInfoRectangleEditing(editing: boolean): void {
+    this.infoRectangleEditing = editing;
+    this.root.attr('data-info-rectangle-editing', String(editing));
+    this.editorLayer.style('display', editing ? '' : 'none');
+    this.setInteractionActive(editing);
+    this.syncInfoRectangleVisibility();
+    this.updateInfoRectangleGeometry();
   }
 
   public setSchools(domesticSchools: SchoolGroup[], foreignSchools: SchoolGroup[]): void {
@@ -213,7 +295,10 @@ export class SchoolOverlay {
     projection: GeoProjection,
     transform: ZoomTransform,
   ): void {
-    const infoRect = getInfoRectangle(width, height);
+    this.width = width;
+    this.height = height;
+    const infoRect = getInfoRectangle(width, height, this.infoRectanglePlacement);
+    this.currentInfoRect = infoRect;
     const margin = defaultConfig.canvasMargin;
     const canvasRect: Rect = {
       x: margin,
@@ -227,6 +312,7 @@ export class SchoolOverlay {
       .attr('y', infoRect.y)
       .attr('width', infoRect.width)
       .attr('height', infoRect.height);
+    this.updateEditorGeometry();
 
     const baseVisibleInputs: LayoutInput[] = [];
     const schoolsById = new Map<string, SchoolGroup>();
@@ -329,10 +415,138 @@ export class SchoolOverlay {
   }
 
   public destroy(): void {
+    this.endEditorDrag?.();
     document.removeEventListener('pointerdown', this.handleDocumentPointerDown, true);
     this.root.interrupt();
     this.root.selectAll('*').interrupt();
     this.root.remove();
+  }
+
+  private syncInfoRectangleVisibility(): void {
+    this.infoRectangle.style(
+      'display',
+      this.showInfoRectangle || this.infoRectangleEditing ? '' : 'none',
+    );
+  }
+
+  private updateInfoRectangleGeometry(): void {
+    if (this.width <= 0 || this.height <= 0) return;
+    this.currentInfoRect = getInfoRectangle(
+      this.width,
+      this.height,
+      this.infoRectanglePlacement,
+    );
+    this.infoRectangle
+      .attr('x', this.currentInfoRect.x)
+      .attr('y', this.currentInfoRect.y)
+      .attr('width', this.currentInfoRect.width)
+      .attr('height', this.currentInfoRect.height);
+    this.updateEditorGeometry();
+  }
+
+  private updateEditorGeometry(): void {
+    const rect = this.currentInfoRect;
+    this.editorBlocker
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', this.width)
+      .attr('height', this.height);
+    this.editorMoveSurface
+      .attr('x', rect.x)
+      .attr('y', rect.y)
+      .attr('width', rect.width)
+      .attr('height', rect.height);
+    const points: Record<InfoRectangleResizeHandle, Point> = {
+      n: { x: rect.x + rect.width / 2, y: rect.y },
+      ne: { x: rect.x + rect.width, y: rect.y },
+      e: { x: rect.x + rect.width, y: rect.y + rect.height / 2 },
+      se: { x: rect.x + rect.width, y: rect.y + rect.height },
+      s: { x: rect.x + rect.width / 2, y: rect.y + rect.height },
+      sw: { x: rect.x, y: rect.y + rect.height },
+      w: { x: rect.x, y: rect.y + rect.height / 2 },
+      nw: { x: rect.x, y: rect.y },
+    };
+    this.editorHandles.attr(
+      'transform',
+      (handle) => `translate(${points[handle].x},${points[handle].y})`,
+    );
+    const hitSize = defaultConfig.infoRectangleEditor.handleHitSize;
+    this.editorHandles.select<SVGRectElement>('rect.info-rectangle-handle-hit')
+      .attr('x', (handle) => (
+        handle === 'n' || handle === 's'
+          ? -Math.max(hitSize, rect.width - hitSize) / 2
+          : -hitSize / 2
+      ))
+      .attr('y', (handle) => (
+        handle === 'e' || handle === 'w'
+          ? -Math.max(hitSize, rect.height - hitSize) / 2
+          : -hitSize / 2
+      ))
+      .attr('width', (handle) => (
+        handle === 'n' || handle === 's'
+          ? Math.max(hitSize, rect.width - hitSize)
+          : hitSize
+      ))
+      .attr('height', (handle) => (
+        handle === 'e' || handle === 'w'
+          ? Math.max(hitSize, rect.height - hitSize)
+          : hitSize
+      ));
+  }
+
+  private beginEditorDrag(event: PointerEvent, handle?: InfoRectangleResizeHandle): void {
+    if (!this.infoRectangleEditing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.endEditorDrag?.();
+
+    const pointerId = event.pointerId;
+    const start = this.clientToSvgPoint(event);
+    const initial = { ...this.currentInfoRect };
+    const margin = defaultConfig.canvasMargin;
+    const bounds: Rect = {
+      x: margin,
+      y: margin,
+      width: Math.max(0, this.width - margin * 2),
+      height: Math.max(0, this.height - margin * 2),
+    };
+    const minWidth = Math.min(defaultConfig.infoRectangleEditor.minWidth, bounds.width);
+    const minHeight = Math.min(defaultConfig.infoRectangleEditor.minHeight, bounds.height);
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== pointerId) return;
+      moveEvent.preventDefault();
+      const point = this.clientToSvgPoint(moveEvent);
+      const deltaX = point.x - start.x;
+      const deltaY = point.y - start.y;
+      const next = handle
+        ? resizeInfoRectangle(initial, handle, deltaX, deltaY, bounds, minWidth, minHeight)
+        : moveInfoRectangle(initial, deltaX, deltaY, bounds);
+      this.infoRectanglePlacement = getInfoRectanglePlacement(next, this.width, this.height);
+      this.currentInfoRect = next;
+      this.updateInfoRectangleGeometry();
+      this.onInfoRectanglePlacementChange?.(this.getInfoRectanglePlacement());
+    };
+    const end = (endEvent?: PointerEvent): void => {
+      if (endEvent && endEvent.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      this.endEditorDrag = null;
+    };
+    this.endEditorDrag = () => end();
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  }
+
+  private clientToSvgPoint(event: PointerEvent): Point {
+    const svg = this.root.node()?.ownerSVGElement;
+    const bounds = svg?.getBoundingClientRect();
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return { x: 0, y: 0 };
+    return {
+      x: (event.clientX - bounds.left) * this.width / bounds.width,
+      y: (event.clientY - bounds.top) * this.height / bounds.height,
+    };
   }
 
   private renderLines(scenes: LabelScene[]): void {

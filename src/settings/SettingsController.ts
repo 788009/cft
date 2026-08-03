@@ -39,6 +39,7 @@ export class SettingsController {
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   private readonly onShowInfoRectangleChange: (show: boolean) => void;
+  private readonly onEditInfoRectangle: () => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
   private showRegionNames: boolean;
@@ -58,6 +59,7 @@ export class SettingsController {
     onShowRegionNamesChange: (show: boolean) => void,
     onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
     onShowInfoRectangleChange: (show: boolean) => void,
+    onEditInfoRectangle: () => void,
   ) {
     this.container = container;
     this.mode = initialMode;
@@ -70,6 +72,7 @@ export class SettingsController {
     this.onShowRegionNamesChange = onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
     this.onShowInfoRectangleChange = onShowInfoRectangleChange;
+    this.onEditInfoRectangle = onEditInfoRectangle;
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
@@ -96,6 +99,11 @@ export class SettingsController {
   public close(): void {
     this.shell?.destroy();
     this.shell = null;
+  }
+
+  public setButtonVisible(visible: boolean): void {
+    this.button.classList.toggle('hidden', !visible);
+    this.button.setAttribute('aria-hidden', String(!visible));
   }
 
   public destroy(): void {
@@ -198,7 +206,21 @@ export class SettingsController {
       '显示信息范围框',
       () => this.selectShowInfoRectangle(!this.showInfoRectangle),
     ));
-    fieldset.append(legend, toggle, filterSetting, infoRectangleSetting);
+    const editInfoRectangle = document.createElement('button');
+    editInfoRectangle.type = 'button';
+    editInfoRectangle.dataset.testid = 'edit-info-rectangle';
+    editInfoRectangle.className = [
+      'mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-medium',
+      'text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+      'dark:focus-visible:outline-teal-400',
+    ].join(' ');
+    editInfoRectangle.textContent = '调整大小和位置';
+    editInfoRectangle.addEventListener('click', () => {
+      this.close();
+      this.onEditInfoRectangle();
+    });
+    fieldset.append(legend, toggle, filterSetting, infoRectangleSetting, editInfoRectangle);
     return fieldset;
   }
 

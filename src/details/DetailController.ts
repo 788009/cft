@@ -3,6 +3,7 @@ import type { RegionSelection } from './types';
 import { ModalShell } from './ModalShell';
 import { RegionDetailRenderer } from '@/map/RegionDetailRenderer';
 import { getPersonDetailRows } from './person';
+import type { InfoRectanglePlacement } from '@/map/InfoRectangle';
 
 export class DetailController {
   private readonly container: HTMLElement;
@@ -13,17 +14,20 @@ export class DetailController {
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
   private showInfoRectangle: boolean;
+  private infoRectanglePlacement: InfoRectanglePlacement;
 
   constructor(
     container: HTMLElement,
     showRegionNames: boolean,
     onlyShowRegionNamesWithSchools: boolean,
     showInfoRectangle: boolean,
+    infoRectanglePlacement: InfoRectanglePlacement,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
     this.onlyShowRegionNamesWithSchools = onlyShowRegionNamesWithSchools;
     this.showInfoRectangle = showInfoRectangle;
+    this.infoRectanglePlacement = infoRectanglePlacement;
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -39,6 +43,11 @@ export class DetailController {
   public setShowInfoRectangle(show: boolean): void {
     this.showInfoRectangle = show;
     this.regionRenderer?.setShowInfoRectangle(show);
+  }
+
+  public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
+    this.infoRectanglePlacement = placement;
+    this.regionRenderer?.setInfoRectanglePlacement(placement);
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
@@ -65,6 +74,7 @@ export class DetailController {
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
+      this.infoRectanglePlacement,
     );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;

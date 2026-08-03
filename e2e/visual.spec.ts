@@ -87,6 +87,21 @@ test('renders the dark theme consistently', async ({ page }) => {
   });
 });
 
+test('renders the information range editing mode consistently', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('edit-info-rectangle').click();
+
+  const map = page.getByTestId('map-container');
+  await expect(page.getByTestId('info-rectangle-editor-controls')).toBeVisible();
+  await expect(map.locator('g.info-rectangle-handle')).toHaveCount(8);
+  await expect(map.locator('g.school-label').first()).toBeHidden();
+  await expect(page).toHaveScreenshot('info-rectangle-editor.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.001,
+  });
+});
+
 test('renders uniformly scaled cards in compact landscape', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-landscape-chromium', '移动横屏基线已覆盖此状态');
   await page.setViewportSize({ width: 600, height: 300 });

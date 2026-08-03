@@ -6,6 +6,12 @@ export interface AppConfig {
   dataBasePath: string;
   infoRectangleWidthRatio: number;
   infoRectangleHeightRatio: number;
+  infoRectangleEditor: {
+    minWidth: number;
+    minHeight: number;
+    handleSize: number;
+    handleHitSize: number;
+  };
   canvasMargin: number;
   labelSpacing: number;
   layoutTransitionDurationMs: number;
@@ -67,6 +73,12 @@ export const defaultConfig: AppConfig = {
   dataBasePath: resolveDataBasePath(import.meta.env.BASE_URL),
   infoRectangleWidthRatio: 0.5,
   infoRectangleHeightRatio: 0.5,
+  infoRectangleEditor: {
+    minWidth: 120,
+    minHeight: 80,
+    handleSize: 12,
+    handleHitSize: 44,
+  },
   canvasMargin: 20,
   labelSpacing: 4,
   layoutTransitionDurationMs: 200,

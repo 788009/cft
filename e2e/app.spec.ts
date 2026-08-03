@@ -345,6 +345,118 @@ test('toggles the information range decoration on the map and region details', a
   await expect(infoRectangle).toBeVisible();
 });
 
+test('moves and resizes the information range in its dedicated editing mode', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const infoRectangle = map.locator('rect.info-rectangle');
+  const rectangleGeometry = async (rectangle = infoRectangle) => ({
+    x: Number(await rectangle.getAttribute('x')),
+    y: Number(await rectangle.getAttribute('y')),
+    width: Number(await rectangle.getAttribute('width')),
+    height: Number(await rectangle.getAttribute('height')),
+  });
+  const initial = await rectangleGeometry();
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('info-rectangle-toggle').click();
+  await expect(infoRectangle).toBeHidden();
+  await page.getByTestId('edit-info-rectangle').click();
+
+  await expect(page.getByTestId('settings-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('settings-button')).toBeHidden();
+  await expect(page.getByTestId('info-rectangle-editor-controls')).toBeVisible();
+  await expect(page.getByTestId('info-rectangle-editor')).toBeVisible();
+  await expect(infoRectangle).toBeVisible();
+  await expect(map.locator('g.school-label').first()).toBeHidden();
+  await expect(map.locator('line.school-line').first()).toBeHidden();
+
+  const handles = map.locator('g.info-rectangle-handle');
+  await expect(handles).toHaveCount(8);
+  const northHit = map.locator('[data-handle="n"] rect.info-rectangle-handle-hit');
+  const eastHit = map.locator('[data-handle="e"] rect.info-rectangle-handle-hit');
+  const cornerHit = map.locator('[data-handle="se"] rect.info-rectangle-handle-hit');
+  expect(Number(await northHit.getAttribute('width'))).toBeGreaterThan(44);
+  await expect(northHit).toHaveAttribute('height', '44');
+  await expect(eastHit).toHaveAttribute('width', '44');
+  expect(Number(await eastHit.getAttribute('height'))).toBeGreaterThan(44);
+  await expect(cornerHit).toHaveAttribute('width', '44');
+  await expect(cornerHit).toHaveAttribute('height', '44');
+
+  const moveSurface = page.getByTestId('info-rectangle-move-surface');
+  const moveBox = await moveSurface.boundingBox();
+  if (!moveBox) throw new Error('信息范围框移动区域没有可用尺寸');
+  await page.mouse.move(moveBox.x + moveBox.width / 3, moveBox.y + moveBox.height / 3);
+  await page.mouse.down();
+  await page.mouse.move(
+    moveBox.x + moveBox.width / 3 + 50,
+    moveBox.y + moveBox.height / 3 + 24,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  const moved = await rectangleGeometry();
+  expect(moved.x).toBeCloseTo(initial.x + 50, 0);
+  expect(moved.y).toBeCloseTo(initial.y + 24, 0);
+  expect(moved.width).toBeCloseTo(initial.width, 1);
+  expect(moved.height).toBeCloseTo(initial.height, 1);
+
+  const southEastBox = await map.locator('g.info-rectangle-handle[data-handle="se"]').boundingBox();
+  if (!southEastBox) throw new Error('信息范围框缩放手柄没有可用尺寸');
+  await page.mouse.move(
+    southEastBox.x + southEastBox.width / 2,
+    southEastBox.y + southEastBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    southEastBox.x + southEastBox.width / 2 + 36,
+    southEastBox.y + southEastBox.height / 2 + 20,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  const resized = await rectangleGeometry();
+  expect(resized.width).toBeCloseTo(moved.width + 36, 0);
+  expect(resized.height).toBeCloseTo(moved.height + 20, 0);
+
+  await page.getByTestId('reset-info-rectangle').click();
+  await expect.poll(() => rectangleGeometry()).toEqual(initial);
+
+  const resetMoveBox = await moveSurface.boundingBox();
+  if (!resetMoveBox) throw new Error('重置后的信息范围框没有可用尺寸');
+  await page.mouse.move(resetMoveBox.x + 30, resetMoveBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(resetMoveBox.x + 70, resetMoveBox.y + 46, { steps: 3 });
+  await page.mouse.up();
+  const confirmed = await rectangleGeometry();
+  expect(confirmed.x).toBeCloseTo(initial.x + 40, 0);
+  expect(confirmed.y).toBeCloseTo(initial.y + 16, 0);
+
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('info-rectangle-editor-controls')).toHaveCount(0);
+  await expect(page.getByTestId('info-rectangle-editor')).toBeHidden();
+  await expect(page.getByTestId('settings-button')).toBeVisible();
+  await expect(map.locator('g.school-label').first()).toBeVisible();
+  await expect(infoRectangle).toBeHidden();
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('info-rectangle-toggle').click();
+  await page.getByTestId('close-settings-dialog').click();
+  await expect(infoRectangle).toBeVisible();
+  await expect.poll(() => rectangleGeometry()).toEqual(confirmed);
+
+  await map.locator('.layer-provinces-fill path.region-actionable').first().click({ force: true });
+  const detailMap = page.getByTestId('region-detail-map');
+  const detailRectangle = detailMap.locator('rect.info-rectangle');
+  await expect(detailRectangle).toBeVisible();
+  const mainSvgBox = await map.locator('svg').boundingBox();
+  const detailSvgBox = await detailMap.boundingBox();
+  if (!mainSvgBox || !detailSvgBox) throw new Error('地图没有可用尺寸');
+  const detail = await rectangleGeometry(detailRectangle);
+  expect(detail.x / detailSvgBox.width).toBeCloseTo(confirmed.x / mainSvgBox.width, 4);
+  expect(detail.y / detailSvgBox.height).toBeCloseTo(confirmed.y / mainSvgBox.height, 4);
+  expect(detail.width / detailSvgBox.width).toBeCloseTo(confirmed.width / mainSvgBox.width, 4);
+  expect(detail.height / detailSvgBox.height).toBeCloseTo(confirmed.height / mainSvgBox.height, 4);
+});
+
 test('highlights provinces on hover in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');

@@ -6,6 +6,7 @@ import { MAP_STYLES, defaultConfig, type MapInteractionMode } from '@/config';
 import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
+import type { InfoRectanglePlacement } from './InfoRectangle';
 import { rewindFeature } from './geo';
 import type { RegionSelection } from '@/details/types';
 import {
@@ -31,6 +32,8 @@ export interface MapRendererOptions {
   showRegionNames?: boolean;
   onlyShowRegionNamesWithSchools?: boolean;
   showInfoRectangle?: boolean;
+  infoRectanglePlacement?: InfoRectanglePlacement;
+  onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
 }
 
 export class MapRenderer {
@@ -62,6 +65,7 @@ export class MapRenderer {
   private onlyShowRegionNamesWithSchools: boolean;
   private domesticSchools: ProcessedData['domesticSchools'] = [];
   private readonly schoolOverlay: SchoolOverlay;
+  private infoRectangleEditing = false;
   private width: number;
   private height: number;
 
@@ -114,6 +118,8 @@ export class MapRenderer {
     this.schoolOverlay = new SchoolOverlay(this.svg, {
       onStudentSelect: options.onStudentSelect,
       showInfoRectangle: options.showInfoRectangle,
+      infoRectanglePlacement: options.infoRectanglePlacement,
+      onInfoRectanglePlacementChange: options.onInfoRectanglePlacementChange,
     });
 
     this.projection = createProjection(width, height);
@@ -162,6 +168,23 @@ export class MapRenderer {
 
   public setShowInfoRectangle(show: boolean): void {
     this.schoolOverlay.setShowInfoRectangle(show);
+  }
+
+  public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
+    this.schoolOverlay.setInfoRectanglePlacement(placement);
+    if (this.infoRectangleEditing) return;
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
+  }
+
+  public setInfoRectangleEditing(editing: boolean): void {
+    if (editing === this.infoRectangleEditing) return;
+    this.infoRectangleEditing = editing;
+    this.schoolOverlay.setInfoRectangleEditing(editing);
+    if (!editing) {
+      this.schoolOverlay.resetLayout();
+      this.updateSchoolOverlay();
+    }
   }
 
   private handleZoomStart(): void {
