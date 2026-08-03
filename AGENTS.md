@@ -10,7 +10,8 @@
 
 - pnpm
 - Vite
-- Vanilla JavaScript
+- Vanilla
+- TypeScript
 - D3.js，按需导入所需模块
 - Tailwind CSS，用于控件、弹窗和响应式界面；地图路径、动态位置及 SVG 状态可使用普通 CSS 或 SVG 属性
 - Vitest，用于单元测试
