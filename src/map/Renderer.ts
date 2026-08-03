@@ -2,7 +2,7 @@ import * as d3 from 'd3';
 import { createProjection } from './projection';
 import { LevelManager, type MapLevel } from './LevelManager';
 import { loadGeoJSON } from '@/data/fetcher';
-import { MAP_STYLES } from '@/config';
+import { MAP_STYLES, defaultConfig, type MapInteractionMode } from '@/config';
 import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
@@ -13,6 +13,7 @@ export interface MapRendererOptions {
   onViewChange?: (view: MapViewState) => void;
   onRegionSelect?: (selection: RegionSelection) => void;
   onStudentSelect?: (student: Student) => void;
+  interactionMode?: MapInteractionMode;
 }
 
 export class MapRenderer {
@@ -39,6 +40,7 @@ export class MapRenderer {
   private districtsRenderPromise: Promise<boolean> | null = null;
   private currentTransform = d3.zoomIdentity;
   private zoomInteractionChanged = false;
+  private interactionMode: MapInteractionMode;
   private readonly schoolOverlay: SchoolOverlay;
   private width: number;
   private height: number;
@@ -57,6 +59,7 @@ export class MapRenderer {
     this.container = el;
     this.onViewChange = options.onViewChange;
     this.onRegionSelect = options.onRegionSelect;
+    this.interactionMode = options.interactionMode ?? defaultConfig.mapInteractionMode;
 
     const { width, height } = this.container.getBoundingClientRect();
     this.width = width;
@@ -112,6 +115,10 @@ export class MapRenderer {
     this.updateSchoolOverlay();
   }
 
+  public setInteractionMode(mode: MapInteractionMode): void {
+    this.interactionMode = mode;
+  }
+
   private handleZoomStart(): void {
     if (this.destroyed) return;
     this.zoomInteractionChanged = false;
@@ -119,12 +126,13 @@ export class MapRenderer {
 
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {
     if (this.destroyed) return;
-    if (!this.zoomInteractionChanged) {
+    if (this.interactionMode === 'hide-and-reflow' && !this.zoomInteractionChanged) {
       this.zoomInteractionChanged = true;
       this.schoolOverlay.setInteractionActive(true);
     }
     this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
+    if (this.interactionMode === 'stable') this.updateSchoolOverlay();
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);
 
@@ -136,7 +144,11 @@ export class MapRenderer {
   }
 
   private handleZoomEnd(): void {
-    if (this.destroyed || !this.zoomInteractionChanged) return;
+    if (
+      this.destroyed ||
+      this.interactionMode !== 'hide-and-reflow' ||
+      !this.zoomInteractionChanged
+    ) return;
     this.schoolOverlay.resetLayout();
     this.updateSchoolOverlay();
     this.schoolOverlay.setInteractionActive(false);

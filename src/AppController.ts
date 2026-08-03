@@ -3,6 +3,8 @@ import { MapRenderer } from '@/map/Renderer';
 import { ViewState } from '@/state/ViewState';
 import type { ProcessedData } from '@/types';
 import { DetailController } from '@/details/DetailController';
+import { defaultConfig, type MapInteractionMode } from '@/config';
+import { SettingsController } from '@/settings/SettingsController';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
@@ -10,6 +12,8 @@ export class AppController {
   private readonly uiContainer: HTMLElement;
   private readonly viewState: ViewState;
   private readonly details: DetailController;
+  private readonly settings: SettingsController;
+  private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
   private renderVersion = 0;
@@ -21,6 +25,14 @@ export class AppController {
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
     this.details = new DetailController(this.uiContainer);
+    this.settings = new SettingsController(
+      this.uiContainer,
+      this.interactionMode,
+      (mode) => {
+        this.interactionMode = mode;
+        this.renderer?.setInteractionMode(mode);
+      },
+    );
   }
 
   public start(): void {
@@ -38,6 +50,7 @@ export class AppController {
     this.renderer?.destroy();
     this.renderer = null;
     this.details.closeAll();
+    this.settings.destroy();
   }
 
   private readonly handleResize = (): void => {
@@ -59,6 +72,7 @@ export class AppController {
       this.renderer?.destroy();
       this.renderer = null;
       this.details.closeAll();
+      this.settings.close();
       return;
     }
 
@@ -80,6 +94,7 @@ export class AppController {
         onViewChange: (view) => this.viewState.updateMap(view),
         onRegionSelect: (selection) => this.details.openRegion(selection, data),
         onStudentSelect: (student) => this.details.openPerson(student),
+        interactionMode: this.interactionMode,
       });
       this.renderer = renderer;
       renderer.setData(data);

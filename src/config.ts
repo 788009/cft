@@ -1,3 +1,6 @@
+export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type MapInteractionMode = 'stable' | 'hide-and-reflow';
+
 export interface AppConfig {
   dataBasePath: string;
   infoRectangleWidthRatio: number;
@@ -37,7 +40,9 @@ export interface AppConfig {
     stability: number;
   };
   searchArrowMergeDistance: number;
-  foreignCorner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  foreignCorner: Corner;
+  settingsButtonCorner: Corner;
+  mapInteractionMode: MapInteractionMode;
   export: {
     defaultWidth: number;
     defaultHeight: number;
@@ -92,6 +97,8 @@ export const defaultConfig: AppConfig = {
   },
   searchArrowMergeDistance: 48,
   foreignCorner: 'top-right',
+  settingsButtonCorner: 'top-left',
+  mapInteractionMode: 'hide-and-reflow',
   export: {
     defaultWidth: 3840,
     defaultHeight: 2160,

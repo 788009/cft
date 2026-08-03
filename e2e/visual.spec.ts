@@ -61,6 +61,19 @@ test('renders a personal detail dialog consistently', async ({ page }) => {
   });
 });
 
+test('renders the settings dialog consistently', async ({ page }) => {
+  await page.goto('/');
+  const settingsButton = page.getByTestId('settings-button');
+  await expect(settingsButton).toBeVisible();
+  await settingsButton.click();
+  await expect(page.getByTestId('settings-dialog')).toBeVisible();
+
+  await expect(page).toHaveScreenshot('settings-dialog.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.001,
+  });
+});
+
 test('renders uniformly scaled cards in compact landscape', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-landscape-chromium', '移动横屏基线已覆盖此状态');
   await page.setViewportSize({ width: 600, height: 300 });

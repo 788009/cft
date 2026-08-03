@@ -151,6 +151,42 @@ test('hides school overlays while panning and recomputes the complete layout aft
   }
 });
 
+test('switches to the stable layout mode from settings', async ({ page }) => {
+  await page.goto('/');
+
+  const settingsButton = page.getByTestId('settings-button');
+  await expect(settingsButton).toHaveAttribute('data-corner', 'top-left');
+  await settingsButton.click();
+
+  const dialog = page.getByTestId('settings-dialog');
+  const stableMode = page.getByTestId('interaction-mode-stable');
+  const reflowMode = page.getByTestId('interaction-mode-hide-and-reflow');
+  await expect(dialog).toBeVisible();
+  await expect(reflowMode).toHaveAttribute('aria-checked', 'true');
+  await expect(stableMode).toHaveAttribute('aria-checked', 'false');
+  await stableMode.click();
+  await expect(stableMode).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('close-settings-dialog').click();
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const overlay = map.locator('g.school-overlay');
+  const labels = map.locator('g.school-label');
+  const lines = map.locator('line.school-line');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 24, box.y + box.height / 2 + 12, { steps: 3 });
+  await expect(overlay).not.toHaveAttribute('data-interacting', 'true');
+  await expect(labels.first()).toBeVisible();
+  await expect(lines.first()).toHaveAttribute('opacity', '0.72');
+  expect(await lines.first().evaluate((line) => getComputedStyle(line).visibility)).toBe('visible');
+  await page.mouse.up();
+  await expect(labels.first()).toBeVisible();
+});
+
 test('restores re-entering school labels at their saved position without sliding from the origin', async ({ page }) => {
   await page.goto('/');
 

@@ -10,4 +10,9 @@ describe('App config', () => {
   it('keeps adaptive label scaling in the centralized config', () => {
     expect(defaultConfig.labelScale).toEqual({ min: 0.5, step: 0.1 });
   });
+
+  it('keeps settings placement and the default interaction mode configurable', () => {
+    expect(defaultConfig.settingsButtonCorner).toBe('top-left');
+    expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
+  });
 });
