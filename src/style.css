@@ -1,4 +1,13 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
 
 .school-label text {
   font-family: Arial, "Microsoft YaHei", sans-serif;
@@ -34,4 +43,63 @@
   outline: none;
   stroke: #0f766e;
   stroke-width: 2;
+}
+
+.dark .region-actionable:hover,
+.dark .region-actionable:focus-visible {
+  fill: #134e4a;
+}
+
+.dark .layer-provinces-fill path[data-has-schools="true"],
+.dark .layer-cities path[data-has-schools="true"],
+.dark .layer-districts path,
+.dark .region-detail-geometry path {
+  fill: #1f2937;
+}
+
+.dark .layer-provinces-fill path[data-has-schools="false"],
+.dark .layer-cities path[data-has-schools="false"] {
+  fill: #475569;
+}
+
+.dark .layer-provinces-border path,
+.dark .layer-cities path,
+.dark .layer-districts path,
+.dark .layer-tendash path,
+.dark .region-detail-geometry path {
+  stroke: #94a3b8;
+}
+
+.dark .info-rectangle {
+  fill: rgba(15, 23, 42, 0.12);
+  stroke: #64748b;
+}
+
+.dark .school-line {
+  stroke: #94a3b8;
+}
+
+.dark .school-anchor {
+  fill: #2dd4bf;
+  stroke: #0f172a;
+}
+
+.dark .school-label-background,
+.dark .foreign-panel-background {
+  fill: #111827;
+  stroke: #64748b;
+}
+
+.dark .school-label-title,
+.dark .foreign-school-title {
+  fill: #f8fafc;
+}
+
+.dark .student-name {
+  fill: #cbd5e1;
+}
+
+.dark .student-name:hover,
+.dark .student-name:focus-visible {
+  fill: #5eead4;
 }

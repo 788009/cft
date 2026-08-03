@@ -187,6 +187,30 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   await expect(labels.first()).toBeVisible();
 });
 
+test('follows the browser color scheme and supports explicit theme settings', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-theme-mode', 'system');
+  await expect(root).toHaveAttribute('data-resolved-theme', 'dark');
+  await expect(root).toHaveClass(/dark/);
+
+  await page.getByTestId('settings-button').click();
+  const systemMode = page.getByTestId('theme-mode-system');
+  const lightMode = page.getByTestId('theme-mode-light');
+  const darkMode = page.getByTestId('theme-mode-dark');
+  await expect(systemMode).toHaveAttribute('aria-checked', 'true');
+  await lightMode.click();
+  await expect(root).toHaveAttribute('data-theme-mode', 'light');
+  await expect(root).toHaveAttribute('data-resolved-theme', 'light');
+  await expect(root).not.toHaveClass(/dark/);
+  await darkMode.click();
+  await expect(root).toHaveAttribute('data-theme-mode', 'dark');
+  await expect(root).toHaveAttribute('data-resolved-theme', 'dark');
+  await expect(root).toHaveClass(/dark/);
+});
+
 test('restores re-entering school labels at their saved position without sliding from the origin', async ({ page }) => {
   await page.goto('/');
 

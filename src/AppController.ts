@@ -5,6 +5,7 @@ import type { ProcessedData } from '@/types';
 import { DetailController } from '@/details/DetailController';
 import { defaultConfig, type MapInteractionMode } from '@/config';
 import { SettingsController } from '@/settings/SettingsController';
+import { ThemeController } from '@/theme/ThemeController';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
@@ -13,6 +14,7 @@ export class AppController {
   private readonly viewState: ViewState;
   private readonly details: DetailController;
   private readonly settings: SettingsController;
+  private readonly theme: ThemeController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
@@ -25,13 +27,16 @@ export class AppController {
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
     this.details = new DetailController(this.uiContainer);
+    this.theme = new ThemeController(defaultConfig.themeMode);
     this.settings = new SettingsController(
       this.uiContainer,
       this.interactionMode,
+      defaultConfig.themeMode,
       (mode) => {
         this.interactionMode = mode;
         this.renderer?.setInteractionMode(mode);
       },
+      (mode) => this.theme.setMode(mode),
     );
   }
 
@@ -51,6 +56,7 @@ export class AppController {
     this.renderer = null;
     this.details.closeAll();
     this.settings.destroy();
+    this.theme.destroy();
   }
 
   private readonly handleResize = (): void => {

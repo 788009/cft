@@ -201,6 +201,9 @@ export class MapRenderer {
         .enter()
         .append('path')
         .attr('d', this.pathGenerator as any)
+        .attr('data-has-schools', (d: any) => (
+          String(this.validProvinces.has(String(d.properties.province_adcode)))
+        ))
         .attr('fill', (d: any) => {
           const adcode = String(d.properties.province_adcode);
           return this.validProvinces.has(adcode) ? '#ffffff' : '#e5e7eb';
@@ -279,6 +282,10 @@ export class MapRenderer {
         .enter()
         .append('path')
         .attr('d', (d: any) => this.pathGenerator(d))
+        .attr('data-has-schools', (d: any) => {
+          const p = d.properties;
+          return String(this.validCities.has(String(p.city_adcode || p.adcode)));
+        })
         .attr('fill', (d: any) => {
           const p = d.properties;
           const cityAdcode = String(p.city_adcode || p.adcode);

@@ -1,5 +1,6 @@
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type MapInteractionMode = 'stable' | 'hide-and-reflow';
+export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface AppConfig {
   dataBasePath: string;
@@ -43,6 +44,7 @@ export interface AppConfig {
   foreignCorner: Corner;
   settingsButtonCorner: Corner;
   mapInteractionMode: MapInteractionMode;
+  themeMode: ThemeMode;
   export: {
     defaultWidth: number;
     defaultHeight: number;
@@ -99,6 +101,7 @@ export const defaultConfig: AppConfig = {
   foreignCorner: 'top-right',
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'hide-and-reflow',
+  themeMode: 'system',
   export: {
     defaultWidth: 3840,
     defaultHeight: 2160,

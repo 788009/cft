@@ -1,15 +1,27 @@
-import { defaultConfig, type Corner, type MapInteractionMode } from '@/config';
+import settingsIconUrl from '@/assets/icons/settings.svg';
+import {
+  defaultConfig,
+  type Corner,
+  type MapInteractionMode,
+  type ThemeMode,
+} from '@/config';
 import { ModalShell } from '@/details/ModalShell';
 
-interface ModeOption {
-  value: MapInteractionMode;
+interface SettingOption<T extends string> {
+  value: T;
   label: string;
   testId: string;
 }
 
-const MODE_OPTIONS: ModeOption[] = [
+const MODE_OPTIONS: SettingOption<MapInteractionMode>[] = [
   { value: 'stable', label: '保持显示', testId: 'interaction-mode-stable' },
   { value: 'hide-and-reflow', label: '隐藏并重排', testId: 'interaction-mode-hide-and-reflow' },
+];
+
+const THEME_OPTIONS: SettingOption<ThemeMode>[] = [
+  { value: 'system', label: '跟随系统', testId: 'theme-mode-system' },
+  { value: 'light', label: '浅色', testId: 'theme-mode-light' },
+  { value: 'dark', label: '深色', testId: 'theme-mode-dark' },
 ];
 
 const CORNER_CLASSES: Record<Corner, string> = {
@@ -23,29 +35,40 @@ export class SettingsController {
   private readonly container: HTMLElement;
   private readonly button: HTMLButtonElement;
   private readonly onModeChange: (mode: MapInteractionMode) => void;
+  private readonly onThemeModeChange: (mode: ThemeMode) => void;
   private mode: MapInteractionMode;
+  private themeMode: ThemeMode;
   private shell: ModalShell | null = null;
 
   constructor(
     container: HTMLElement,
     initialMode: MapInteractionMode,
+    initialThemeMode: ThemeMode,
     onModeChange: (mode: MapInteractionMode) => void,
+    onThemeModeChange: (mode: ThemeMode) => void,
   ) {
     this.container = container;
     this.mode = initialMode;
+    this.themeMode = initialThemeMode;
     this.onModeChange = onModeChange;
+    this.onThemeModeChange = onThemeModeChange;
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
     this.button.dataset.corner = defaultConfig.settingsButtonCorner;
     this.button.className = [
       'absolute z-20 flex h-11 w-11 items-center justify-center rounded-md border',
-      'border-slate-300 bg-white text-[22px] leading-none text-slate-700 shadow-sm',
-      'pointer-events-auto hover:bg-slate-50 focus-visible:outline-2',
-      'focus-visible:outline-offset-2 focus-visible:outline-teal-700',
+      'border-slate-300 bg-white text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900',
+      'pointer-events-auto hover:bg-slate-50 focus-visible:outline-2 dark:hover:bg-slate-800',
+      'focus-visible:outline-offset-2 focus-visible:outline-teal-700 dark:focus-visible:outline-teal-400',
       CORNER_CLASSES[defaultConfig.settingsButtonCorner],
     ].join(' ');
-    this.button.textContent = '\u2699';
+    const icon = document.createElement('img');
+    icon.src = settingsIconUrl;
+    icon.alt = '';
+    icon.className = 'h-5 w-5 dark:invert';
+    icon.setAttribute('aria-hidden', 'true');
+    this.button.append(icon);
     this.button.title = '设置';
     this.button.setAttribute('aria-label', '打开设置');
     this.button.addEventListener('click', this.open);
@@ -69,36 +92,66 @@ export class SettingsController {
       testId: 'settings-dialog',
       title: '设置',
       closeLabel: '关闭设置',
-      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl',
-      bodyClass: 'overflow-auto bg-white p-4',
+      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900',
+      bodyClass: 'overflow-auto bg-white p-4 dark:bg-slate-900',
       onClose: () => this.close(),
     });
 
+    const content = document.createElement('div');
+    content.className = 'grid gap-5';
+    content.append(
+      this.createChoiceGroup(
+        '地图移动与缩放',
+        '地图移动与缩放时的卡片显示模式',
+        'interaction-mode',
+        MODE_OPTIONS,
+        (value) => this.selectMode(value),
+      ),
+      this.createChoiceGroup(
+        '外观',
+        '界面外观',
+        'theme-mode',
+        THEME_OPTIONS,
+        (value) => this.selectThemeMode(value),
+      ),
+    );
+    this.shell.body.append(content);
+    this.updateChoices();
+  };
+
+  private createChoiceGroup<T extends string>(
+    label: string,
+    ariaLabel: string,
+    setting: string,
+    options: SettingOption<T>[],
+    onSelect: (value: T) => void,
+  ): HTMLFieldSetElement {
     const fieldset = document.createElement('fieldset');
     const legend = document.createElement('legend');
-    legend.className = 'mb-2 text-sm font-medium text-slate-700';
-    legend.textContent = '地图移动与缩放';
+    legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
+    legend.textContent = label;
     const choices = document.createElement('div');
-    choices.className = 'grid grid-cols-2 overflow-hidden rounded-md border border-slate-300';
+    choices.className = 'grid overflow-hidden rounded-md border border-slate-300 dark:border-slate-700';
+    choices.style.gridTemplateColumns = `repeat(${options.length}, minmax(0, 1fr))`;
     choices.setAttribute('role', 'radiogroup');
-    choices.setAttribute('aria-label', '地图移动与缩放时的卡片显示模式');
+    choices.setAttribute('aria-label', ariaLabel);
 
-    for (const option of MODE_OPTIONS) {
+    for (const option of options) {
       const choice = document.createElement('button');
       choice.type = 'button';
       choice.dataset.testid = option.testId;
-      choice.dataset.mode = option.value;
-      choice.className = 'min-h-11 border-r border-slate-300 px-3 text-sm font-medium last:border-r-0 focus-visible:relative focus-visible:outline-2 focus-visible:outline-teal-700';
+      choice.dataset.setting = setting;
+      choice.dataset.value = option.value;
+      choice.className = 'min-h-11 border-r border-slate-300 px-3 text-sm font-medium last:border-r-0 focus-visible:relative focus-visible:outline-2 focus-visible:outline-teal-700 dark:border-slate-700 dark:focus-visible:outline-teal-400';
       choice.setAttribute('role', 'radio');
       choice.textContent = option.label;
-      choice.addEventListener('click', () => this.selectMode(option.value));
+      choice.addEventListener('click', () => onSelect(option.value));
       choices.append(choice);
     }
 
     fieldset.append(legend, choices);
-    this.shell.body.append(fieldset);
-    this.updateChoices();
-  };
+    return fieldset;
+  }
 
   private selectMode(mode: MapInteractionMode): void {
     if (mode === this.mode) return;
@@ -107,15 +160,29 @@ export class SettingsController {
     this.onModeChange(mode);
   }
 
+  private selectThemeMode(mode: ThemeMode): void {
+    if (mode === this.themeMode) return;
+    this.themeMode = mode;
+    this.updateChoices();
+    this.onThemeModeChange(mode);
+  }
+
   private updateChoices(): void {
     if (!this.shell) return;
-    for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[data-mode]')) {
-      const selected = choice.dataset.mode === this.mode;
+    for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[data-setting]')) {
+      const selectedValue = choice.dataset.setting === 'interaction-mode'
+        ? this.mode
+        : this.themeMode;
+      const selected = choice.dataset.value === selectedValue;
       choice.setAttribute('aria-checked', String(selected));
       choice.classList.toggle('bg-teal-700', selected);
       choice.classList.toggle('text-white', selected);
+      choice.classList.toggle('dark:bg-teal-500', selected);
+      choice.classList.toggle('dark:text-slate-950', selected);
       choice.classList.toggle('bg-white', !selected);
       choice.classList.toggle('text-slate-700', !selected);
+      choice.classList.toggle('dark:bg-slate-900', !selected);
+      choice.classList.toggle('dark:text-slate-300', !selected);
     }
   }
 }

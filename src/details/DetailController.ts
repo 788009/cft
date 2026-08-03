@@ -23,7 +23,7 @@ export class DetailController {
     downloadButton.type = 'button';
     downloadButton.disabled = true;
     downloadButton.dataset.testid = 'download-region-image';
-    downloadButton.className = 'h-11 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-400 disabled:cursor-not-allowed';
+    downloadButton.className = 'h-11 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:text-slate-500';
     downloadButton.textContent = '下载图片';
 
     this.regionShell = new ModalShell(this.container, {
@@ -41,7 +41,7 @@ export class DetailController {
       if (version !== this.openVersion || !this.regionShell) return;
       console.error('地区详情加载失败:', error);
       const message = document.createElement('p');
-      message.className = 'flex h-full items-center justify-center p-6 text-sm text-red-700';
+      message.className = 'flex h-full items-center justify-center p-6 text-sm text-red-700 dark:text-red-400';
       message.textContent = '地区详情加载失败';
       this.regionShell.body.replaceChildren(message);
     });
@@ -54,15 +54,15 @@ export class DetailController {
       title: student.name,
       closeLabel: '关闭个人详情',
       layerClass: 'z-40',
-      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,430px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl',
-      bodyClass: 'overflow-auto bg-white p-4',
+      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,430px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900',
+      bodyClass: 'overflow-auto bg-white p-4 dark:bg-slate-900',
       onClose: () => this.closePerson(),
     });
     this.regionShell?.root.setAttribute('aria-hidden', 'true');
     if (this.regionShell) this.regionShell.root.inert = true;
 
     const details = document.createElement('dl');
-    details.className = 'divide-y divide-slate-100 text-sm';
+    details.className = 'divide-y divide-slate-100 text-sm dark:divide-slate-800';
     for (const row of getPersonDetailRows(student)) {
       details.append(this.createPersonRow(row.label, row.value, `person-${row.key}`));
     }
@@ -97,10 +97,10 @@ export class DetailController {
     row.className = 'grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0';
     row.dataset.testid = `${testId}-row`;
     const term = document.createElement('dt');
-    term.className = 'text-slate-500';
+    term.className = 'text-slate-500 dark:text-slate-400';
     term.textContent = label;
     const description = document.createElement('dd');
-    description.className = 'min-w-0 break-words font-medium text-slate-900';
+    description.className = 'min-w-0 break-words font-medium text-slate-900 dark:text-slate-100';
     description.dataset.testid = testId;
     description.textContent = value;
     row.append(term, description);
