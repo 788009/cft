@@ -1,13 +1,24 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cft</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>可交互蹭饭图</title>
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
-  <body>
-    <div id="app"></div>
+  <body class="overflow-hidden bg-gray-50 m-0 p-0 text-gray-800">
+    <div id="app" class="relative w-screen h-screen flex">
+      <!-- 横屏引导 -->
+      <div id="orientation-guide" class="absolute inset-0 z-50 flex items-center justify-center bg-white hidden">
+        <p class="text-xl font-medium">请将设备横屏以获得完整体验</p>
+      </div>
+      
+      <!-- 地图容器 -->
+      <div id="map-container" class="absolute inset-0 z-0"></div>
+      
+      <!-- UI 容器 -->
+      <div id="ui-container" class="absolute inset-0 z-10 pointer-events-none"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
