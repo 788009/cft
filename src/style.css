@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+.school-label text {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.student-name {
+  cursor: pointer;
+}

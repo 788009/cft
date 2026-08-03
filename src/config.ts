@@ -5,6 +5,17 @@ export interface AppConfig {
   canvasMargin: number;
   labelSpacing: number;
   layoutTransitionDurationMs: number;
+  labelStyle: {
+    minWidth: number;
+    maxWidth: number;
+    paddingX: number;
+    paddingY: number;
+    lineHeight: number;
+    universityFontSize: number;
+    studentFontSize: number;
+    studentsPerRow: number;
+    anchorRadius: number;
+  };
   kThresholds: {
     city: number;
     district: number;
@@ -44,6 +55,17 @@ export const defaultConfig: AppConfig = {
   canvasMargin: 20,
   labelSpacing: 8,
   layoutTransitionDurationMs: 200,
+  labelStyle: {
+    minWidth: 80,
+    maxWidth: 224,
+    paddingX: 5,
+    paddingY: 7,
+    lineHeight: 15,
+    universityFontSize: 12,
+    studentFontSize: 11,
+    studentsPerRow: 2,
+    anchorRadius: 3,
+  },
   kThresholds: {
     city: 2.5,
     district: 6.0,

@@ -5,6 +5,7 @@ import { loadGeoJSON } from '@/data/fetcher';
 import { MAP_STYLES } from '@/config';
 import type { ProcessedData } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
+import { SchoolOverlay } from './SchoolOverlay';
 
 export interface MapRendererOptions {
   onViewChange?: (view: MapViewState) => void;
@@ -69,6 +70,9 @@ export class MapRenderer {
   private citiesRenderPromise: Promise<boolean> | null = null;
   private districtsRenderPromise: Promise<boolean> | null = null;
   private currentTransform = d3.zoomIdentity;
+  private readonly schoolOverlay: SchoolOverlay;
+  private width: number;
+  private height: number;
 
   private layers: {
     provincesFill: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -85,6 +89,8 @@ export class MapRenderer {
     this.onViewChange = options.onViewChange;
 
     const { width, height } = this.container.getBoundingClientRect();
+    this.width = width;
+    this.height = height;
     
     this.svg = d3.select(this.container)
       .append('svg')
@@ -94,7 +100,7 @@ export class MapRenderer {
       .attr('data-map-level', 'province')
       .style('display', 'block');
 
-    this.g = this.svg.append('g');
+    this.g = this.svg.append('g').attr('class', 'map-geometry');
 
     this.layers = {
       provincesFill: this.g.append('g').attr('class', 'layer-provinces-fill'),
@@ -103,6 +109,7 @@ export class MapRenderer {
       provincesBorder: this.g.append('g').attr('class', 'layer-provinces-border').style('pointer-events', 'none'),
       tendash: this.g.append('g').attr('class', 'layer-tendash').style('pointer-events', 'none')
     };
+    this.schoolOverlay = new SchoolOverlay(this.svg);
 
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);
@@ -123,12 +130,15 @@ export class MapRenderer {
       if (school.provinceAdcode) this.validProvinces.add(String(school.provinceAdcode));
       if (school.cityAdcode) this.validCities.add(String(school.cityAdcode));
     }
+    this.schoolOverlay.setData(data);
+    this.updateSchoolOverlay();
   }
 
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {
     if (this.destroyed) return;
     this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
+    this.updateSchoolOverlay();
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);
 
@@ -141,10 +151,13 @@ export class MapRenderer {
 
   public resize(width: number, height: number): void {
     if (this.destroyed) return;
+    this.width = width;
+    this.height = height;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);
     this.g.selectAll<SVGPathElement, unknown>('path').attr('d', this.pathGenerator as any);
+    this.updateSchoolOverlay();
   }
 
   public destroy(): void {
@@ -154,6 +167,7 @@ export class MapRenderer {
     this.svg.on('.zoom', null);
     this.svg.interrupt();
     this.g.selectAll('*').interrupt();
+    this.schoolOverlay.destroy();
     this.svg.remove();
   }
 
@@ -315,5 +329,14 @@ export class MapRenderer {
       k: this.currentTransform.k,
       level,
     });
+  }
+
+  private updateSchoolOverlay(): void {
+    this.schoolOverlay.update(
+      this.width,
+      this.height,
+      this.projection,
+      this.currentTransform,
+    );
   }
 }
