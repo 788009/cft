@@ -52,7 +52,6 @@ export class MapRenderer {
   private pathGenerator: d3.GeoPath;
   private zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private levelManager: LevelManager;
-  private data: ProcessedData | null = null;
   
   private validProvinces = new Set<string>();
   private validCities = new Set<string>();
@@ -105,7 +104,6 @@ export class MapRenderer {
   }
 
   public setData(data: ProcessedData) {
-    this.data = data;
     this.validProvinces.clear();
     this.validCities.clear();
     
