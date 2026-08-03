@@ -38,6 +38,7 @@ export class MapRenderer {
   private citiesRenderPromise: Promise<boolean> | null = null;
   private districtsRenderPromise: Promise<boolean> | null = null;
   private currentTransform = d3.zoomIdentity;
+  private zoomInteractionChanged = false;
   private readonly schoolOverlay: SchoolOverlay;
   private width: number;
   private height: number;
@@ -88,7 +89,9 @@ export class MapRenderer {
 
     this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([1, 20])
-      .on('zoom', (event) => this.handleZoom(event));
+      .on('start', () => this.handleZoomStart())
+      .on('zoom', (event) => this.handleZoom(event))
+      .on('end', () => this.handleZoomEnd());
 
     this.svg.call(this.zoomBehavior);
   }
@@ -109,11 +112,19 @@ export class MapRenderer {
     this.updateSchoolOverlay();
   }
 
+  private handleZoomStart(): void {
+    if (this.destroyed) return;
+    this.zoomInteractionChanged = false;
+  }
+
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {
     if (this.destroyed) return;
+    if (!this.zoomInteractionChanged) {
+      this.zoomInteractionChanged = true;
+      this.schoolOverlay.setInteractionActive(true);
+    }
     this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
-    this.updateSchoolOverlay();
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);
 
@@ -122,6 +133,13 @@ export class MapRenderer {
       const version = ++this.transitionVersion;
       void this.updateLayerVisibility(newLevel, version);
     }
+  }
+
+  private handleZoomEnd(): void {
+    if (this.destroyed || !this.zoomInteractionChanged) return;
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
+    this.schoolOverlay.setInteractionActive(false);
   }
 
   public resize(width: number, height: number): void {

@@ -55,7 +55,7 @@ test('zooms, changes detail level, pans and recomputes paths after resize', asyn
   await expect.poll(() => provincePath.getAttribute('d')).not.toBe(initialPath);
 });
 
-test('lays out visible school labels without overlap and keeps them stable while panning', async ({ page }) => {
+test('hides school overlays while panning and recomputes the complete layout afterwards', async ({ page }) => {
   await page.goto('/');
 
   const map = page.getByTestId('map-container');
@@ -116,7 +116,17 @@ test('lays out visible school labels without overlap and keeps them stable while
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 24, box.y + box.height / 2 + 12, { steps: 3 });
+
+  const overlay = map.locator('g.school-overlay');
+  await expect(overlay).toHaveAttribute('data-interacting', 'true');
+  await expect(labels.first()).toBeHidden();
+  await expect(map.locator('line.school-line').first()).toBeHidden();
+  await expect(map.locator('g.foreign-schools-panel')).toBeHidden();
+
   await page.mouse.up();
+
+  await expect(overlay).toHaveAttribute('data-interacting', 'false');
+  await expect(labels.first()).toBeVisible();
 
   const after = await labels.evaluateAll((nodes) => nodes.map((node) => {
     const label = node as SVGGElement;
@@ -124,14 +134,20 @@ test('lays out visible school labels without overlap and keeps them stable while
       school: label.dataset.school ?? '',
       x: Number(label.dataset.labelX),
       y: Number(label.dataset.labelY),
+      width: Number(label.dataset.labelWidth),
+      height: Number(label.dataset.labelHeight),
+      studentCount: label.querySelectorAll('text.student-name').length,
     };
   }));
-  const afterBySchool = new Map(after.map((label) => [label.school, label]));
-  for (const label of before.labels) {
-    const current = afterBySchool.get(label.school);
-    if (!current) continue;
-    expect(current.x).toBe(label.x);
-    expect(current.y).toBe(label.y);
+  for (const [index, label] of after.entries()) {
+    expect(label.x).toBeGreaterThanOrEqual(0);
+    expect(label.y).toBeGreaterThanOrEqual(0);
+    expect(label.x + label.width).toBeLessThanOrEqual(viewport.width);
+    expect(label.y + label.height).toBeLessThanOrEqual(viewport.height);
+    expect(overlaps(label, { school: 'info', ...before.info })).toBe(false);
+    for (const other of after.slice(index + 1)) {
+      expect(overlaps(label, other, before.spacing)).toBe(false);
+    }
   }
 });
 

@@ -149,6 +149,25 @@ export class SchoolOverlay {
     this.positionHistory.clear();
   }
 
+  public setInteractionActive(active: boolean): void {
+    this.root.attr('data-interacting', String(active));
+    for (const layer of [this.linesLayer, this.anchorsLayer, this.labelsLayer, this.foreignLayer]) {
+      layer.interrupt();
+      if (active) {
+        layer.style('visibility', 'hidden');
+      } else {
+        layer.style('visibility', null);
+      }
+    }
+  }
+
+  public resetLayout(): void {
+    this.positionHistory.clear();
+    for (const layer of [this.linesLayer, this.anchorsLayer, this.labelsLayer, this.foreignLayer]) {
+      layer.selectAll('*').interrupt().remove();
+    }
+  }
+
   public update(
     width: number,
     height: number,
