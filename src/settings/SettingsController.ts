@@ -179,7 +179,7 @@ export class SettingsController {
     );
     const filterSetting = document.createElement('div');
     filterSetting.dataset.testid = 'region-names-school-filter-setting';
-    filterSetting.className = 'mt-2 pl-3';
+    filterSetting.className = 'mt-2';
     filterSetting.append(this.createSwitch(
       'region-names-school-filter-toggle',
       '仅显示有大学的地区',
@@ -210,11 +210,11 @@ export class SettingsController {
     label.textContent = labelText;
     const track = document.createElement('span');
     track.dataset.toggleTrack = 'true';
-    track.className = 'relative h-6 w-11 shrink-0 rounded-full transition-colors';
+    track.className = 'relative block h-6 w-11 shrink-0 rounded-full transition-colors';
     track.setAttribute('aria-hidden', 'true');
     const thumb = document.createElement('span');
     thumb.dataset.toggleThumb = 'true';
-    thumb.className = 'absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform';
+    thumb.className = 'absolute top-1 block h-4 w-4 rounded-full bg-white shadow-sm transition-transform';
     track.append(thumb);
     toggle.append(label, track);
     return toggle;

@@ -237,6 +237,18 @@ test('shows region names for the current map level and toggles them from setting
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await expect(filterSetting).toBeVisible();
   await expect(filterToggle).toHaveAttribute('aria-checked', 'true');
+  const mainToggleBox = await toggle.boundingBox();
+  const filterToggleBox = await filterToggle.boundingBox();
+  if (!mainToggleBox || !filterToggleBox) throw new Error('地区名称开关没有可用尺寸');
+  expect(filterToggleBox.x).toBeCloseTo(mainToggleBox.x, 1);
+  expect(filterToggleBox.width).toBeCloseTo(mainToggleBox.width, 1);
+  for (const switchControl of [toggle, filterToggle]) {
+    const trackBox = await switchControl.locator('[data-toggle-track="true"]').boundingBox();
+    const thumbBox = await switchControl.locator('[data-toggle-thumb="true"]').boundingBox();
+    if (!trackBox || !thumbBox) throw new Error('地区名称开关图形没有可用尺寸');
+    expect(thumbBox.x).toBeGreaterThanOrEqual(trackBox.x);
+    expect(thumbBox.x + thumbBox.width).toBeLessThanOrEqual(trackBox.x + trackBox.width);
+  }
   await filterToggle.click();
   await expect(filterToggle).toHaveAttribute('aria-checked', 'false');
   await expect.poll(() => visibleLabelCount(provinceLabels)).toBe(34);
