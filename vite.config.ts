@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
@@ -73,5 +73,8 @@ export default defineConfig({
   ],
   resolve: {
     tsconfigPaths: true
-  }
+  },
+  test: {
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+  },
 });
