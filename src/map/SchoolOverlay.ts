@@ -8,6 +8,7 @@ import { defaultConfig } from '@/config';
 import {
   calculateLayout,
   getConnectionPoint,
+  isOverlap,
   type LayoutInput,
   type Point,
   type Rect,
@@ -20,6 +21,11 @@ interface LabelScene {
   school: SchoolGroup;
   anchor: Point;
   rect: Rect;
+}
+
+interface ForeignPanelScene {
+  rect: Rect;
+  schools: SchoolGroup[];
 }
 
 function textWidth(text: string, fontSize: number): number {
@@ -62,18 +68,49 @@ function containsPoint(rect: Rect, point: Point): boolean {
   );
 }
 
+function foreignPanelSize(schools: SchoolGroup[]): { width: number; height: number } {
+  const style = defaultConfig.labelStyle;
+  const width = Math.max(
+    style.minWidth,
+    ...schools.map((school) => labelSize(school).width),
+  );
+  const contentHeight = schools.reduce((height, school, index) => {
+    const rows = Math.ceil(school.students.length / style.studentsPerRow);
+    const spacing = index === 0 ? 0 : defaultConfig.labelSpacing;
+    return height + spacing + style.lineHeight * (rows + 1);
+  }, 0);
+
+  return {
+    width,
+    height: style.paddingY * 2 + contentHeight,
+  };
+}
+
+function rectAtCorner(size: { width: number; height: number }, canvasRect: Rect): Rect {
+  const horizontal = defaultConfig.foreignCorner.endsWith('right')
+    ? canvasRect.x + canvasRect.width - size.width
+    : canvasRect.x;
+  const vertical = defaultConfig.foreignCorner.startsWith('bottom')
+    ? canvasRect.y + canvasRect.height - size.height
+    : canvasRect.y;
+  return { x: horizontal, y: vertical, ...size };
+}
+
 export class SchoolOverlay {
   private readonly root: Selection<SVGGElement, unknown, null, undefined>;
   private readonly infoRectangle: Selection<SVGRectElement, unknown, null, undefined>;
   private readonly linesLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly foreignLayer: Selection<SVGGElement, unknown, null, undefined>;
   private domesticSchools: SchoolGroup[] = [];
+  private foreignSchools: SchoolGroup[] = [];
   private readonly positionHistory = new Map<string, Rect>();
 
   constructor(svg: Selection<SVGSVGElement, unknown, null, undefined>) {
     this.root = svg.append('g')
       .attr('class', 'school-overlay')
+      .attr('data-label-spacing', defaultConfig.labelSpacing)
       .style('pointer-events', 'none');
     this.infoRectangle = this.root.append('rect')
       .attr('class', 'info-rectangle')
@@ -85,10 +122,12 @@ export class SchoolOverlay {
     this.linesLayer = this.root.append('g').attr('class', 'school-lines');
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
+    this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
   }
 
   public setData(data: ProcessedData): void {
     this.domesticSchools = data.domesticSchools;
+    this.foreignSchools = data.foreignSchools;
   }
 
   public update(
@@ -114,12 +153,14 @@ export class SchoolOverlay {
 
     const visibleInputs: LayoutInput[] = [];
     const schoolsById = new Map<string, SchoolGroup>();
+    const domesticAnchors: Point[] = [];
     for (const school of this.domesticSchools) {
       if (school.lat === null || school.lng === null) continue;
       const projected = getProjectedPoint(projection, school.lat, school.lng);
       if (!projected) continue;
       const [x, y] = transform.apply([projected.x, projected.y]);
       const anchor = { x, y };
+      domesticAnchors.push(anchor);
       if (!containsPoint(infoRect, anchor)) continue;
 
       const size = labelSize(school);
@@ -127,10 +168,35 @@ export class SchoolOverlay {
       schoolsById.set(school.university, school);
     }
 
-    const layout = calculateLayout(visibleInputs, this.positionHistory, {
+    const showForeignSchools = (
+      this.foreignSchools.length > 0 &&
+      domesticAnchors.length === this.domesticSchools.length &&
+      domesticAnchors.every((anchor) => containsPoint(infoRect, anchor))
+    );
+    if (domesticAnchors.length > 0) {
+      this.root
+        .attr('data-domestic-anchor-min-x', Math.min(...domesticAnchors.map((anchor) => anchor.x)))
+        .attr('data-domestic-anchor-max-x', Math.max(...domesticAnchors.map((anchor) => anchor.x)))
+        .attr('data-domestic-anchor-min-y', Math.min(...domesticAnchors.map((anchor) => anchor.y)))
+        .attr('data-domestic-anchor-max-y', Math.max(...domesticAnchors.map((anchor) => anchor.y)))
+        .attr('data-all-domestic-in-range', String(showForeignSchools));
+    }
+    const foreignScene: ForeignPanelScene | null = showForeignSchools
+      ? {
+          rect: rectAtCorner(foreignPanelSize(this.foreignSchools), canvasRect),
+          schools: this.foreignSchools,
+        }
+      : null;
+
+    const historyConflictsWithForeignPanel = foreignScene && Array.from(this.positionHistory.values())
+      .some((rect) => isOverlap(rect, foreignScene.rect, defaultConfig.labelSpacing));
+    const layoutHistory = historyConflictsWithForeignPanel
+      ? new Map<string, Rect>()
+      : this.positionHistory;
+    const layout = calculateLayout(visibleInputs, layoutHistory, {
       canvasRect,
       infoRect,
-      obstacles: [],
+      obstacles: foreignScene ? [foreignScene.rect] : [],
       spacing: defaultConfig.labelSpacing,
       weights: defaultConfig.layoutWeights,
     });
@@ -148,6 +214,7 @@ export class SchoolOverlay {
     this.renderLines(scenes);
     this.renderAnchors(scenes);
     this.renderLabels(scenes);
+    this.renderForeignPanel(foreignScene);
   }
 
   public destroy(): void {
@@ -270,6 +337,94 @@ export class SchoolOverlay {
       .attr('opacity', 1);
 
     labels.exit()
+      .interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('opacity', 0)
+      .remove();
+  }
+
+  private renderForeignPanel(scene: ForeignPanelScene | null): void {
+    const style = defaultConfig.labelStyle;
+    const panels = this.foreignLayer.selectAll<SVGGElement, ForeignPanelScene>('g.foreign-schools-panel')
+      .data(scene ? [scene] : []);
+    const entered = panels.enter()
+      .append('g')
+      .attr('class', 'foreign-schools-panel')
+      .attr('opacity', 0)
+      .style('pointer-events', 'auto');
+    entered.append('rect')
+      .attr('class', 'foreign-panel-background')
+      .attr('rx', 4)
+      .attr('fill', '#f8fafc')
+      .attr('stroke', '#94a3b8')
+      .attr('stroke-width', 1);
+
+    const merged = entered.merge(panels)
+      .attr('data-corner', defaultConfig.foreignCorner)
+      .attr('data-panel-x', (panel) => panel.rect.x)
+      .attr('data-panel-y', (panel) => panel.rect.y)
+      .attr('data-panel-width', (panel) => panel.rect.width)
+      .attr('data-panel-height', (panel) => panel.rect.height);
+    merged.select<SVGRectElement>('rect.foreign-panel-background')
+      .attr('width', (panel) => panel.rect.width)
+      .attr('height', (panel) => panel.rect.height);
+
+    merged.each(function updateSchools(panel) {
+      let offsetY = style.paddingY;
+      const schoolOffsets = new Map<string, number>();
+      for (const school of panel.schools) {
+        schoolOffsets.set(school.university, offsetY);
+        const rows = Math.ceil(school.students.length / style.studentsPerRow);
+        offsetY += style.lineHeight * (rows + 1) + defaultConfig.labelSpacing;
+      }
+
+      const groups = select(this).selectAll<SVGGElement, SchoolGroup>('g.foreign-school-group')
+        .data(panel.schools, (school) => school.university);
+      const groupEnter = groups.enter()
+        .append('g')
+        .attr('class', 'foreign-school-group');
+      groupEnter.append('text')
+        .attr('class', 'foreign-school-title')
+        .attr('fill', '#0f172a')
+        .attr('font-size', style.universityFontSize)
+        .attr('font-weight', 600);
+
+      const groupMerged = groupEnter.merge(groups)
+        .attr('transform', (school) => `translate(${style.paddingX},${schoolOffsets.get(school.university)})`);
+      groupMerged.select<SVGTextElement>('text.foreign-school-title')
+        .attr('y', style.universityFontSize)
+        .text((school) => school.university);
+      groupMerged.each(function updateForeignStudents(school) {
+        const students = select(this).selectAll<SVGTextElement, Student>('text.student-name')
+          .data(school.students, (student) => String(student.originalIndex));
+        students.enter()
+          .append('text')
+          .attr('class', 'student-name')
+          .attr('fill', '#475569')
+          .attr('font-size', style.studentFontSize)
+          .merge(students)
+          .attr('x', (_, index) => (
+            (index % style.studentsPerRow) * (
+              (panel.rect.width - style.paddingX * 2) / style.studentsPerRow
+            )
+          ))
+          .attr('y', (_, index) => (
+            style.lineHeight * (Math.floor(index / style.studentsPerRow) + 2)
+          ))
+          .attr('data-student-index', (student) => student.originalIndex)
+          .text((student) => student.name);
+        students.exit().remove();
+      });
+      groups.exit().remove();
+    });
+
+    merged.interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('transform', (panel) => `translate(${panel.rect.x},${panel.rect.y})`)
+      .attr('opacity', 1);
+    panels.exit()
       .interrupt()
       .transition()
       .duration(defaultConfig.layoutTransitionDurationMs)

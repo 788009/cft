@@ -53,7 +53,7 @@ export const defaultConfig: AppConfig = {
   infoRectangleWidthRatio: 0.5,
   infoRectangleHeightRatio: 0.5,
   canvasMargin: 20,
-  labelSpacing: 8,
+  labelSpacing: 4,
   layoutTransitionDurationMs: 200,
   labelStyle: {
     minWidth: 80,

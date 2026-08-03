@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { centerDomesticSchools } from './helpers';
 
 test('switches between portrait guidance and the landscape map', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
@@ -81,6 +82,7 @@ test('lays out visible school labels without overlap and keeps them stable while
       })),
       lineCount: container.querySelectorAll('line.school-line').length,
       anchorCount: container.querySelectorAll('circle.school-anchor').length,
+      spacing: Number(container.querySelector<SVGGElement>('g.school-overlay')?.dataset.labelSpacing),
     };
   });
 
@@ -104,7 +106,7 @@ test('lays out visible school labels without overlap and keeps them stable while
     expect(label.y + label.height).toBeLessThanOrEqual(viewport.height);
     expect(overlaps(label, { school: 'info', studentCount: 0, ...before.info })).toBe(false);
     for (const other of before.labels.slice(index + 1)) {
-      expect(overlaps(label, other, 8)).toBe(false);
+      expect(overlaps(label, other, before.spacing)).toBe(false);
     }
   }
 
@@ -131,4 +133,72 @@ test('lays out visible school labels without overlap and keeps them stable while
     expect(current.x).toBe(label.x);
     expect(current.y).toBe(label.y);
   }
+});
+
+test('reserves the configured corner for foreign schools and toggles it with map coverage', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const panel = map.locator('g.foreign-schools-panel');
+  await centerDomesticSchools(page);
+
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveAttribute('opacity', '1');
+  await expect(panel).toHaveAttribute('data-corner', 'top-right');
+  await expect(panel.locator('g.foreign-school-group')).not.toHaveCount(0);
+  await expect(panel.locator('text.student-name')).not.toHaveCount(0);
+
+  const geometry = await map.evaluate((container) => {
+    const panelNode = container.querySelector<SVGGElement>('g.foreign-schools-panel');
+    if (!panelNode) return null;
+    const panelRect = {
+      x: Number(panelNode.dataset.panelX),
+      y: Number(panelNode.dataset.panelY),
+      width: Number(panelNode.dataset.panelWidth),
+      height: Number(panelNode.dataset.panelHeight),
+    };
+    const labels = Array.from(container.querySelectorAll<SVGGElement>('g.school-label')).map((label) => ({
+      x: Number(label.dataset.labelX),
+      y: Number(label.dataset.labelY),
+      width: Number(label.dataset.labelWidth),
+      height: Number(label.dataset.labelHeight),
+    }));
+    return {
+      panelRect,
+      labels,
+      spacing: Number(container.querySelector<SVGGElement>('g.school-overlay')?.dataset.labelSpacing),
+    };
+  });
+  const viewport = page.viewportSize();
+  if (!geometry || !viewport) throw new Error('缺少国外学校面板或视口');
+  expect(geometry.panelRect.y).toBe(20);
+  expect(geometry.panelRect.x + geometry.panelRect.width).toBe(viewport.width - 20);
+  for (const [index, label] of geometry.labels.entries()) {
+    const separated = (
+      label.x + label.width + geometry.spacing <= geometry.panelRect.x ||
+      geometry.panelRect.x + geometry.panelRect.width + geometry.spacing <= label.x ||
+      label.y + label.height + geometry.spacing <= geometry.panelRect.y ||
+      geometry.panelRect.y + geometry.panelRect.height + geometry.spacing <= label.y
+    );
+    expect(separated).toBe(true);
+    for (const other of geometry.labels.slice(index + 1)) {
+      const labelsSeparated = (
+        label.x + label.width + geometry.spacing <= other.x ||
+        other.x + other.width + geometry.spacing <= label.x ||
+        label.y + label.height + geometry.spacing <= other.y ||
+        other.y + other.height + geometry.spacing <= label.y
+      );
+      expect(labelsSeparated, `标签间距冲突: ${JSON.stringify({ label, other })}`).toBe(true);
+    }
+  }
+
+  const svg = map.locator('svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -2_400);
+  await expect(panel).toHaveCount(0);
+
+  await page.mouse.wheel(0, 2_400);
+  await expect(panel).toBeVisible();
 });
