@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLayout, isOverlap, isInside } from '../layout';
+import { calculateLayout, getConnectionPoint, isOverlap, isInside } from '../layout';
 import type { LayoutInput, LayoutConfig, Rect } from '../layout';
 
 describe('Layout Logic', () => {
   const config: LayoutConfig = {
     canvasRect: { x: 0, y: 0, width: 1000, height: 1000 },
     infoRect: { x: 250, y: 250, width: 500, height: 500 },
+    obstacles: [],
     spacing: 10,
     weights: {
       overlap: 10000,
@@ -80,5 +81,36 @@ describe('Layout Logic', () => {
 
     // 新学校应当放置在不重叠的其他地方
     expect(isOverlap(oldRect, newRect, config.spacing)).toBe(false);
+  });
+
+  it('should reserve obstacle rectangles without moving valid existing labels', () => {
+    const obstacle = { x: 800, y: 0, width: 200, height: 200 };
+    const items: LayoutInput[] = [
+      { id: 'stable', anchor: { x: 500, y: 500 }, width: 100, height: 50 },
+      { id: 'new', anchor: { x: 900, y: 100 }, width: 100, height: 50 },
+    ];
+    const previous = new Map<string, Rect>([
+      ['stable', { x: 0, y: 0, width: 100, height: 50 }],
+    ]);
+
+    const result = calculateLayout(items, previous, { ...config, obstacles: [obstacle] });
+    expect(result.get('stable')).toEqual(previous.get('stable'));
+    expect(isOverlap(result.get('new')!, obstacle, config.spacing)).toBe(false);
+  });
+
+  it('should restore a re-entering item from layout history', () => {
+    const previous = new Map<string, Rect>([
+      ['returning', { x: 40, y: 80, width: 100, height: 50 }],
+    ]);
+    const result = calculateLayout([
+      { id: 'returning', anchor: { x: 600, y: 500 }, width: 100, height: 50 },
+    ], previous, config);
+
+    expect(result.get('returning')).toEqual(previous.get('returning'));
+  });
+
+  it('should connect a line to the nearest label edge', () => {
+    expect(getConnectionPoint({ x: 50, y: 150 }, { x: 100, y: 100, width: 100, height: 100 }))
+      .toEqual({ x: 100, y: 150 });
   });
 });
