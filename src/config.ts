@@ -87,7 +87,7 @@ export const MAP_STYLES = {
   },
   // 区县轮廓
   districts: {
-    stroke: '#d4d4d8',
-    strokeWidth: 0.15,
+    stroke: '#a1a1aa',
+    strokeWidth: 0.2,
   },
 };
