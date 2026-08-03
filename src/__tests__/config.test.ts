@@ -17,5 +17,6 @@ describe('App config', () => {
     expect(defaultConfig.themeMode).toBe('system');
     expect(defaultConfig.showRegionNames).toBe(true);
     expect(defaultConfig.onlyShowRegionNamesWithSchools).toBe(true);
+    expect(defaultConfig.showInfoRectangle).toBe(true);
   });
 });

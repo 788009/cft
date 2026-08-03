@@ -47,6 +47,7 @@ export interface AppConfig {
   themeMode: ThemeMode;
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
+  showInfoRectangle: boolean;
   regionLabelFontSize: number;
   export: {
     defaultWidth: number;
@@ -107,6 +108,7 @@ export const defaultConfig: AppConfig = {
   themeMode: 'system',
   showRegionNames: true,
   onlyShowRegionNamesWithSchools: true,
+  showInfoRectangle: true,
   regionLabelFontSize: 11,
   export: {
     defaultWidth: 3840,

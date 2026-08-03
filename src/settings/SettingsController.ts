@@ -38,10 +38,12 @@ export class SettingsController {
   private readonly onThemeModeChange: (mode: ThemeMode) => void;
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
+  private readonly onShowInfoRectangleChange: (show: boolean) => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
+  private showInfoRectangle: boolean;
   private shell: ModalShell | null = null;
 
   constructor(
@@ -50,20 +52,24 @@ export class SettingsController {
     initialThemeMode: ThemeMode,
     initialShowRegionNames: boolean,
     initialOnlyShowRegionNamesWithSchools: boolean,
+    initialShowInfoRectangle: boolean,
     onModeChange: (mode: MapInteractionMode) => void,
     onThemeModeChange: (mode: ThemeMode) => void,
     onShowRegionNamesChange: (show: boolean) => void,
     onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
+    onShowInfoRectangleChange: (show: boolean) => void,
   ) {
     this.container = container;
     this.mode = initialMode;
     this.themeMode = initialThemeMode;
     this.showRegionNames = initialShowRegionNames;
     this.onlyShowRegionNamesWithSchools = initialOnlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = initialShowInfoRectangle;
     this.onModeChange = onModeChange;
     this.onThemeModeChange = onThemeModeChange;
     this.onShowRegionNamesChange = onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
+    this.onShowInfoRectangleChange = onShowInfoRectangleChange;
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
@@ -185,7 +191,14 @@ export class SettingsController {
       '仅显示有大学的地区',
       () => this.selectOnlyShowRegionNamesWithSchools(!this.onlyShowRegionNamesWithSchools),
     ));
-    fieldset.append(legend, toggle, filterSetting);
+    const infoRectangleSetting = document.createElement('div');
+    infoRectangleSetting.className = 'mt-2';
+    infoRectangleSetting.append(this.createSwitch(
+      'info-rectangle-toggle',
+      '显示信息范围框',
+      () => this.selectShowInfoRectangle(!this.showInfoRectangle),
+    ));
+    fieldset.append(legend, toggle, filterSetting, infoRectangleSetting);
     return fieldset;
   }
 
@@ -248,6 +261,13 @@ export class SettingsController {
     this.onOnlyShowRegionNamesWithSchoolsChange(only);
   }
 
+  private selectShowInfoRectangle(show: boolean): void {
+    if (show === this.showInfoRectangle) return;
+    this.showInfoRectangle = show;
+    this.updateChoices();
+    this.onShowInfoRectangleChange(show);
+  }
+
   private updateChoices(): void {
     if (!this.shell) return;
     for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
@@ -272,8 +292,12 @@ export class SettingsController {
     const filterToggle = this.shell.body.querySelector<HTMLButtonElement>(
       '[data-testid="region-names-school-filter-toggle"]',
     );
+    const infoRectangleToggle = this.shell.body.querySelector<HTMLButtonElement>(
+      '[data-testid="info-rectangle-toggle"]',
+    );
     this.updateSwitch(toggle, this.showRegionNames);
     this.updateSwitch(filterToggle, this.onlyShowRegionNamesWithSchools);
+    this.updateSwitch(infoRectangleToggle, this.showInfoRectangle);
     filterSetting?.classList.toggle('hidden', !this.showRegionNames);
     filterSetting?.setAttribute('aria-hidden', String(!this.showRegionNames));
   }

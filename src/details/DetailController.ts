@@ -12,15 +12,18 @@ export class DetailController {
   private openVersion = 0;
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
+  private showInfoRectangle: boolean;
 
   constructor(
     container: HTMLElement,
     showRegionNames: boolean,
     onlyShowRegionNamesWithSchools: boolean,
+    showInfoRectangle: boolean,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
     this.onlyShowRegionNamesWithSchools = onlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = showInfoRectangle;
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -31,6 +34,11 @@ export class DetailController {
   public setOnlyShowRegionNamesWithSchools(only: boolean): void {
     this.onlyShowRegionNamesWithSchools = only;
     this.regionRenderer?.setOnlyShowRegionNamesWithSchools(only);
+  }
+
+  public setShowInfoRectangle(show: boolean): void {
+    this.showInfoRectangle = show;
+    this.regionRenderer?.setShowInfoRectangle(show);
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
@@ -56,6 +64,7 @@ export class DetailController {
       (student) => this.openPerson(student),
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
+      this.showInfoRectangle,
     );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;

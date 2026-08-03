@@ -35,6 +35,7 @@ interface ForeignPanelScene {
 
 export interface SchoolOverlayOptions {
   onStudentSelect?: (student: Student) => void;
+  showInfoRectangle?: boolean;
 }
 
 function textWidth(text: string, fontSize: number): number {
@@ -143,7 +144,11 @@ export class SchoolOverlay {
       .attr('stroke', '#cbd5e1')
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '4 5')
-      .attr('vector-effect', 'non-scaling-stroke');
+      .attr('vector-effect', 'non-scaling-stroke')
+      .style(
+        'display',
+        (options.showInfoRectangle ?? defaultConfig.showInfoRectangle) ? '' : 'none',
+      );
     this.linesLayer = this.root.append('g').attr('class', 'school-lines');
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
@@ -153,6 +158,10 @@ export class SchoolOverlay {
 
   public setData(data: ProcessedData): void {
     this.setSchools(data.domesticSchools, data.foreignSchools);
+  }
+
+  public setShowInfoRectangle(show: boolean): void {
+    this.infoRectangle.style('display', show ? '' : 'none');
   }
 
   public setSchools(domesticSchools: SchoolGroup[], foreignSchools: SchoolGroup[]): void {

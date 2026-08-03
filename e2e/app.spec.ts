@@ -297,6 +297,54 @@ test('shows region names for the current map level and toggles them from setting
   await expect(cityLabels.first()).toBeHidden();
 });
 
+test('toggles the information range decoration on the map and region details', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const infoRectangle = map.locator('rect.info-rectangle');
+  await expect(infoRectangle).toBeVisible();
+
+  await page.getByTestId('settings-button').click();
+  const regionNamesToggle = page.getByTestId('region-names-toggle');
+  const schoolFilterToggle = page.getByTestId('region-names-school-filter-toggle');
+  const infoRectangleToggle = page.getByTestId('info-rectangle-toggle');
+  await expect(infoRectangleToggle).toHaveAttribute('aria-checked', 'true');
+
+  const toggleBoxes = await Promise.all([
+    regionNamesToggle.boundingBox(),
+    schoolFilterToggle.boundingBox(),
+    infoRectangleToggle.boundingBox(),
+  ]);
+  if (toggleBoxes.some((box) => box === null)) throw new Error('地图标注开关没有可用尺寸');
+  const [regionNamesBox, schoolFilterBox, infoRectangleBox] = toggleBoxes;
+  if (!regionNamesBox || !schoolFilterBox || !infoRectangleBox) {
+    throw new Error('地图标注开关没有可用尺寸');
+  }
+  expect(schoolFilterBox.x).toBeCloseTo(regionNamesBox.x, 1);
+  expect(infoRectangleBox.x).toBeCloseTo(regionNamesBox.x, 1);
+  expect(schoolFilterBox.width).toBeCloseTo(regionNamesBox.width, 1);
+  expect(infoRectangleBox.width).toBeCloseTo(regionNamesBox.width, 1);
+
+  await infoRectangleToggle.click();
+  await expect(infoRectangleToggle).toHaveAttribute('aria-checked', 'false');
+  await expect(infoRectangle).toBeHidden();
+  expect(await infoRectangle.evaluate((rectangle) => getComputedStyle(rectangle).display)).toBe('none');
+  await page.getByTestId('close-settings-dialog').click();
+
+  const province = map.locator('.layer-provinces-fill path.region-actionable').first();
+  await province.click({ force: true });
+  const detailInfoRectangle = page.getByTestId('region-detail-map').locator('rect.info-rectangle');
+  await expect(detailInfoRectangle).toBeHidden();
+  expect(await detailInfoRectangle.evaluate((rectangle) => getComputedStyle(rectangle).display))
+    .toBe('none');
+  await page.getByTestId('close-region-detail-dialog').click();
+
+  await page.getByTestId('settings-button').click();
+  await infoRectangleToggle.click();
+  await expect(infoRectangleToggle).toHaveAttribute('aria-checked', 'true');
+  await expect(infoRectangle).toBeVisible();
+});
+
 test('highlights provinces on hover in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');

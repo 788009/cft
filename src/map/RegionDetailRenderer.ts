@@ -36,6 +36,7 @@ export class RegionDetailRenderer {
     onStudentSelect?: (student: Student) => void,
     showRegionNames = defaultConfig.showRegionNames,
     onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools,
+    showInfoRectangle = defaultConfig.showInfoRectangle,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
@@ -51,7 +52,7 @@ export class RegionDetailRenderer {
     this.labelsLayer = this.svg.append('g')
       .attr('class', 'region-detail-labels')
       .style('pointer-events', 'none');
-    this.overlay = new SchoolOverlay(this.svg, { onStudentSelect });
+    this.overlay = new SchoolOverlay(this.svg, { onStudentSelect, showInfoRectangle });
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
   }
@@ -87,6 +88,10 @@ export class RegionDetailRenderer {
     this.onlyShowRegionNamesWithSchools = only;
     this.labelsLayer.selectAll<SVGTextElement, { hasSchools: boolean }>('text.region-name-label')
       .style('display', (datum) => !only || datum.hasSchools ? '' : 'none');
+  }
+
+  public setShowInfoRectangle(show: boolean): void {
+    this.overlay.setShowInfoRectangle(show);
   }
 
   public destroy(): void {

@@ -18,6 +18,7 @@ export class AppController {
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private showRegionNames = defaultConfig.showRegionNames;
   private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
+  private showInfoRectangle = defaultConfig.showInfoRectangle;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
   private renderVersion = 0;
@@ -32,6 +33,7 @@ export class AppController {
       this.uiContainer,
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
+      this.showInfoRectangle,
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.settings = new SettingsController(
@@ -40,6 +42,7 @@ export class AppController {
       defaultConfig.themeMode,
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
+      this.showInfoRectangle,
       (mode) => {
         this.interactionMode = mode;
         this.renderer?.setInteractionMode(mode);
@@ -54,6 +57,11 @@ export class AppController {
         this.onlyShowRegionNamesWithSchools = only;
         this.renderer?.setOnlyShowRegionNamesWithSchools(only);
         this.details.setOnlyShowRegionNamesWithSchools(only);
+      },
+      (show) => {
+        this.showInfoRectangle = show;
+        this.renderer?.setShowInfoRectangle(show);
+        this.details.setShowInfoRectangle(show);
       },
     );
   }
@@ -121,6 +129,7 @@ export class AppController {
         interactionMode: this.interactionMode,
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
+        showInfoRectangle: this.showInfoRectangle,
       });
       this.renderer = renderer;
       renderer.setData(data);

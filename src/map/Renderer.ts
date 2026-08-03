@@ -30,6 +30,7 @@ export interface MapRendererOptions {
   interactionMode?: MapInteractionMode;
   showRegionNames?: boolean;
   onlyShowRegionNamesWithSchools?: boolean;
+  showInfoRectangle?: boolean;
 }
 
 export class MapRenderer {
@@ -112,6 +113,7 @@ export class MapRenderer {
     };
     this.schoolOverlay = new SchoolOverlay(this.svg, {
       onStudentSelect: options.onStudentSelect,
+      showInfoRectangle: options.showInfoRectangle,
     });
 
     this.projection = createProjection(width, height);
@@ -156,6 +158,10 @@ export class MapRenderer {
   public setOnlyShowRegionNamesWithSchools(only: boolean): void {
     this.onlyShowRegionNamesWithSchools = only;
     this.updateRegionLabelFilter();
+  }
+
+  public setShowInfoRectangle(show: boolean): void {
+    this.schoolOverlay.setShowInfoRectangle(show);
   }
 
   private handleZoomStart(): void {
