@@ -294,6 +294,7 @@ export class SchoolOverlay {
     const entered = labels.enter()
       .append('g')
       .attr('class', 'school-label')
+      .attr('transform', (scene) => `translate(${scene.rect.x},${scene.rect.y})`)
       .attr('opacity', 0)
       .style('pointer-events', 'auto');
 

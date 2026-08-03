@@ -135,6 +135,71 @@ test('lays out visible school labels without overlap and keeps them stable while
   }
 });
 
+test('restores re-entering school labels at their saved position without sliding from the origin', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const labels = map.locator('g.school-label');
+  await expect(labels).not.toHaveCount(0);
+  const initialSchools = await labels.evaluateAll((nodes) => nodes.map((node) => (
+    (node as SVGGElement).dataset.school ?? ''
+  )));
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -2_400);
+  await expect.poll(() => labels.count()).toBeLessThan(initialSchools.length);
+  const zoomedSchools = new Set(await labels.evaluateAll((nodes) => nodes.map((node) => (
+    (node as SVGGElement).dataset.school ?? ''
+  ))));
+  const reEnteringSchool = initialSchools.find((school) => !zoomedSchools.has(school));
+  if (!reEnteringSchool) throw new Error('没有学校在缩放后离开信息显示范围');
+
+  const reEnteringLabel = map.locator(`g.school-label[data-school="${reEnteringSchool}"]`);
+  await expect(reEnteringLabel).toHaveCount(0);
+  await map.evaluate((container) => {
+    const labelsLayer = container.querySelector('g.school-labels');
+    if (!labelsLayer) throw new Error('缺少学校标签图层');
+    const captures: Array<{ school: string; transform: string | null }> = [];
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof SVGGElement) || !node.classList.contains('school-label')) continue;
+          captures.push({
+            school: node.dataset.school ?? '',
+            transform: node.getAttribute('transform'),
+          });
+        }
+      }
+    });
+    observer.observe(labelsLayer, { childList: true });
+    Object.assign(window, { __labelEntryObserver: observer, __labelEntryCaptures: captures });
+  });
+
+  await page.mouse.wheel(0, 2_400);
+  await expect(reEnteringLabel).toBeVisible();
+  const result = await map.evaluate((container, school) => {
+    const label = Array.from(container.querySelectorAll<SVGGElement>('g.school-label'))
+      .find((node) => node.dataset.school === school);
+    const state = window as typeof window & {
+      __labelEntryObserver?: MutationObserver;
+      __labelEntryCaptures?: Array<{ school: string; transform: string | null }>;
+    };
+    state.__labelEntryObserver?.disconnect();
+    const capture = state.__labelEntryCaptures?.find((entry) => entry.school === school);
+    return {
+      initialTransform: capture?.transform ?? null,
+      expectedTransform: label
+        ? `translate(${label.dataset.labelX},${label.dataset.labelY})`
+        : null,
+    };
+  }, reEnteringSchool);
+
+  expect(result.initialTransform).toBe(result.expectedTransform);
+});
+
 test('reserves the configured corner for foreign schools and toggles it with map coverage', async ({ page }) => {
   await page.goto('/');
 
