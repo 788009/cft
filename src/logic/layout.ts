@@ -32,6 +32,21 @@ export interface LayoutConfig {
   };
 }
 
+export interface FittingLayoutResult {
+  scale: number;
+  inputs: LayoutInput[];
+  layout: Map<string, Rect>;
+  config: LayoutConfig;
+  satisfiesHardConstraints: boolean;
+}
+
+export interface FittingLayoutOptions {
+  minScale: number;
+  scaleStep: number;
+  getConfig: (scale: number) => LayoutConfig;
+  isScaleAllowed?: (scale: number) => boolean;
+}
+
 export function isOverlap(r1: Rect, r2: Rect, spacing: number): boolean {
   return !(
     r1.x + r1.width + spacing <= r2.x ||
@@ -48,6 +63,40 @@ export function isInside(inner: Rect, outer: Rect): boolean {
     inner.x + inner.width <= outer.x + outer.width &&
     inner.y + inner.height <= outer.y + outer.height
   );
+}
+
+export function createScaleCandidates(minScale: number, step: number): number[] {
+  const clampedMinimum = Math.min(1, Math.max(0.01, minScale));
+  const safeStep = Math.min(1, Math.max(0.01, step));
+  const scales = [1];
+  for (let scale = 1 - safeStep; scale > clampedMinimum; scale -= safeStep) {
+    scales.push(Number(scale.toFixed(4)));
+  }
+  if (scales.at(-1) !== clampedMinimum) scales.push(clampedMinimum);
+  return scales;
+}
+
+export function scaleLayoutInputs(items: LayoutInput[], scale: number): LayoutInput[] {
+  return items.map((item) => ({
+    ...item,
+    width: item.width * scale,
+    height: item.height * scale,
+  }));
+}
+
+export function layoutSatisfiesHardConstraints(
+  items: LayoutInput[],
+  layout: Map<string, Rect>,
+  config: LayoutConfig,
+): boolean {
+  if (layout.size !== items.length) return false;
+  const placed: Rect[] = [];
+  for (const item of items) {
+    const rect = layout.get(item.id);
+    if (!rect || violatesHardConstraints(rect, placed, config)) return false;
+    placed.push(rect);
+  }
+  return true;
 }
 
 function doSegmentsIntersect(p1: Point, p2: Point, p3: Point, p4: Point): boolean {
@@ -216,4 +265,31 @@ export function calculateLayout(
   }
 
   return result;
+}
+
+export function calculateFittingLayout(
+  items: LayoutInput[],
+  previousLayout: Map<string, Rect>,
+  options: FittingLayoutOptions,
+): FittingLayoutResult {
+  let fallback: FittingLayoutResult | null = null;
+  for (const scale of createScaleCandidates(options.minScale, options.scaleStep)) {
+    const scaledInputs = scaleLayoutInputs(items, scale);
+    const config = options.getConfig(scale);
+    const layout = calculateLayout(scaledInputs, previousLayout, config);
+    const satisfiesHardConstraints = (
+      (options.isScaleAllowed?.(scale) ?? true) &&
+      layoutSatisfiesHardConstraints(scaledInputs, layout, config)
+    );
+    const result = { scale, inputs: scaledInputs, layout, config, satisfiesHardConstraints };
+    fallback = result;
+    if (satisfiesHardConstraints) return result;
+  }
+  return fallback ?? {
+    scale: 1,
+    inputs: [],
+    layout: new Map<string, Rect>(),
+    config: options.getConfig(1),
+    satisfiesHardConstraints: true,
+  };
 }

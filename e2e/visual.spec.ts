@@ -60,3 +60,17 @@ test('renders a personal detail dialog consistently', async ({ page }) => {
     maxDiffPixelRatio: 0.001,
   });
 });
+
+test('renders uniformly scaled cards in compact landscape', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-landscape-chromium', '移动横屏基线已覆盖此状态');
+  await page.setViewportSize({ width: 600, height: 300 });
+  await page.goto('/');
+
+  const overlay = page.getByTestId('map-container').locator('g.school-overlay');
+  await expect.poll(async () => Number(await overlay.getAttribute('data-label-scale'))).toBeLessThan(1);
+  await expect(overlay).toHaveAttribute('data-layout-fits', 'true');
+  await expect(page).toHaveScreenshot('adaptive-label-scale.png', {
+    animations: 'disabled',
+    maxDiffPixelRatio: 0.001,
+  });
+});

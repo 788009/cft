@@ -5,6 +5,10 @@ export interface AppConfig {
   canvasMargin: number;
   labelSpacing: number;
   layoutTransitionDurationMs: number;
+  labelScale: {
+    min: number;
+    step: number;
+  };
   labelStyle: {
     minWidth: number;
     maxWidth: number;
@@ -55,6 +59,10 @@ export const defaultConfig: AppConfig = {
   canvasMargin: 20,
   labelSpacing: 4,
   layoutTransitionDurationMs: 200,
+  labelScale: {
+    min: 0.5,
+    step: 0.1,
+  },
   labelStyle: {
     minWidth: 80,
     maxWidth: 224,

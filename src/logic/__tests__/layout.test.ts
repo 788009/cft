@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLayout, getConnectionPoint, isOverlap, isInside } from '../layout';
+import {
+  calculateFittingLayout,
+  calculateLayout,
+  createScaleCandidates,
+  getConnectionPoint,
+  isOverlap,
+  isInside,
+  layoutSatisfiesHardConstraints,
+} from '../layout';
 import type { LayoutInput, LayoutConfig, Rect } from '../layout';
 
 describe('Layout Logic', () => {
@@ -112,5 +120,28 @@ describe('Layout Logic', () => {
   it('should connect a line to the nearest label edge', () => {
     expect(getConnectionPoint({ x: 50, y: 150 }, { x: 100, y: 100, width: 100, height: 100 }))
       .toEqual({ x: 100, y: 150 });
+  });
+
+  it('chooses the largest scale that satisfies every hard constraint', () => {
+    const compactConfig: LayoutConfig = {
+      ...config,
+      canvasRect: { x: 0, y: 0, width: 200, height: 100 },
+      infoRect: { x: 60, y: 0, width: 80, height: 100 },
+      spacing: 0,
+    };
+    const items: LayoutInput[] = [
+      { id: 'left', anchor: { x: 90, y: 50 }, width: 100, height: 100 },
+      { id: 'right', anchor: { x: 110, y: 50 }, width: 100, height: 100 },
+    ];
+    const result = calculateFittingLayout(items, new Map(), {
+      minScale: 0.5,
+      scaleStep: 0.25,
+      getConfig: () => compactConfig,
+    });
+
+    expect(createScaleCandidates(0.5, 0.25)).toEqual([1, 0.75, 0.5]);
+    expect(result.scale).toBe(0.5);
+    expect(result.satisfiesHardConstraints).toBe(true);
+    expect(layoutSatisfiesHardConstraints(result.inputs, result.layout, compactConfig)).toBe(true);
   });
 });

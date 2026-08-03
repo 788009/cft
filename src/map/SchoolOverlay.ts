@@ -6,8 +6,9 @@ import {
 } from 'd3';
 import { defaultConfig } from '@/config';
 import {
-  calculateLayout,
+  calculateFittingLayout,
   getConnectionPoint,
+  isInside,
   isOverlap,
   type LayoutInput,
   type Point,
@@ -21,10 +22,14 @@ interface LabelScene {
   school: SchoolGroup;
   anchor: Point;
   rect: Rect;
+  baseSize: { width: number; height: number };
+  scale: number;
 }
 
 interface ForeignPanelScene {
   rect: Rect;
+  baseSize: { width: number; height: number };
+  scale: number;
   schools: SchoolGroup[];
 }
 
@@ -165,7 +170,7 @@ export class SchoolOverlay {
       .attr('width', infoRect.width)
       .attr('height', infoRect.height);
 
-    const visibleInputs: LayoutInput[] = [];
+    const baseVisibleInputs: LayoutInput[] = [];
     const schoolsById = new Map<string, SchoolGroup>();
     const domesticAnchors: Point[] = [];
     for (const school of this.domesticSchools) {
@@ -178,7 +183,7 @@ export class SchoolOverlay {
       if (!containsPoint(infoRect, anchor)) continue;
 
       const size = labelSize(school);
-      visibleInputs.push({ id: school.university, anchor, ...size });
+      baseVisibleInputs.push({ id: school.university, anchor, ...size });
       schoolsById.set(school.university, school);
     }
 
@@ -195,36 +200,70 @@ export class SchoolOverlay {
         .attr('data-domestic-anchor-max-y', Math.max(...domesticAnchors.map((anchor) => anchor.y)))
         .attr('data-all-domestic-in-range', String(showForeignSchools));
     }
-    const foreignScene: ForeignPanelScene | null = showForeignSchools
-      ? {
-          rect: rectAtCorner(foreignPanelSize(this.foreignSchools), canvasRect),
-          schools: this.foreignSchools,
-        }
-      : null;
-
-    const historyConflictsWithForeignPanel = foreignScene && Array.from(this.positionHistory.values())
-      .some((rect) => isOverlap(rect, foreignScene.rect, defaultConfig.labelSpacing));
+    const baseForeignSize = showForeignSchools ? foreignPanelSize(this.foreignSchools) : null;
+    const createForeignScene = (scale: number): ForeignPanelScene | null => {
+      if (!baseForeignSize) return null;
+      return {
+        rect: rectAtCorner({
+          width: baseForeignSize.width * scale,
+          height: baseForeignSize.height * scale,
+        }, canvasRect),
+        baseSize: baseForeignSize,
+        scale,
+        schools: this.foreignSchools,
+      };
+    };
+    const fullSizeForeignScene = createForeignScene(1);
+    const historyConflictsWithForeignPanel = fullSizeForeignScene && Array.from(this.positionHistory.values())
+      .some((rect) => isOverlap(rect, fullSizeForeignScene.rect, defaultConfig.labelSpacing));
     const layoutHistory = historyConflictsWithForeignPanel
       ? new Map<string, Rect>()
       : this.positionHistory;
-    const layout = calculateLayout(visibleInputs, layoutHistory, {
-      canvasRect,
-      infoRect,
-      obstacles: foreignScene ? [foreignScene.rect] : [],
-      spacing: defaultConfig.labelSpacing,
-      weights: defaultConfig.layoutWeights,
+    const fittingLayout = calculateFittingLayout(baseVisibleInputs, layoutHistory, {
+      minScale: defaultConfig.labelScale.min,
+      scaleStep: defaultConfig.labelScale.step,
+      getConfig: (scale) => {
+        const scene = createForeignScene(scale);
+        return {
+          canvasRect,
+          infoRect,
+          obstacles: scene ? [scene.rect] : [],
+          spacing: defaultConfig.labelSpacing,
+          weights: defaultConfig.layoutWeights,
+        };
+      },
+      isScaleAllowed: (scale) => {
+        const scene = createForeignScene(scale);
+        return !scene || (
+          isInside(scene.rect, canvasRect) &&
+          !isOverlap(scene.rect, infoRect, 0)
+        );
+      },
     });
+    const foreignScene = createForeignScene(fittingLayout.scale);
+    const baseInputsById = new Map(baseVisibleInputs.map((input) => [input.id, input]));
 
     const scenes: LabelScene[] = [];
-    for (const input of visibleInputs) {
-      const rect = layout.get(input.id);
+    for (const input of fittingLayout.inputs) {
+      const rect = fittingLayout.layout.get(input.id);
       const school = schoolsById.get(input.id);
-      if (!rect || !school) continue;
+      const baseInput = baseInputsById.get(input.id);
+      if (!rect || !school || !baseInput) continue;
       this.positionHistory.set(input.id, rect);
-      scenes.push({ id: input.id, school, anchor: input.anchor, rect });
+      scenes.push({
+        id: input.id,
+        school,
+        anchor: input.anchor,
+        rect,
+        baseSize: { width: baseInput.width, height: baseInput.height },
+        scale: fittingLayout.scale,
+      });
     }
 
-    this.root.attr('data-visible-school-count', scenes.length);
+    this.root
+      .attr('data-visible-school-count', scenes.length)
+      .attr('data-label-scale', fittingLayout.scale)
+      .attr('data-layout-fits', String(fittingLayout.satisfiesHardConstraints));
     this.renderLines(scenes);
     this.renderAnchors(scenes);
     this.renderLabels(scenes);
@@ -294,7 +333,9 @@ export class SchoolOverlay {
     const entered = labels.enter()
       .append('g')
       .attr('class', 'school-label')
-      .attr('transform', (scene) => `translate(${scene.rect.x},${scene.rect.y})`)
+      .attr('transform', (scene) => (
+        `translate(${scene.rect.x},${scene.rect.y}) scale(${scene.scale})`
+      ))
       .attr('opacity', 0)
       .style('pointer-events', 'auto');
 
@@ -315,11 +356,12 @@ export class SchoolOverlay {
       .attr('data-label-x', (scene) => scene.rect.x)
       .attr('data-label-y', (scene) => scene.rect.y)
       .attr('data-label-width', (scene) => scene.rect.width)
-      .attr('data-label-height', (scene) => scene.rect.height);
+      .attr('data-label-height', (scene) => scene.rect.height)
+      .attr('data-label-scale', (scene) => scene.scale);
 
     merged.select<SVGRectElement>('rect.school-label-background')
-      .attr('width', (scene) => scene.rect.width)
-      .attr('height', (scene) => scene.rect.height);
+      .attr('width', (scene) => scene.baseSize.width)
+      .attr('height', (scene) => scene.baseSize.height);
     merged.select<SVGTextElement>('text.school-label-title')
       .attr('x', style.paddingX)
       .attr('y', style.paddingY + style.universityFontSize)
@@ -336,7 +378,9 @@ export class SchoolOverlay {
         .merge(studentLabels)
         .attr('x', (_, index) => (
           style.paddingX +
-          (index % style.studentsPerRow) * ((scene.rect.width - style.paddingX * 2) / style.studentsPerRow)
+          (index % style.studentsPerRow) * (
+            (scene.baseSize.width - style.paddingX * 2) / style.studentsPerRow
+          )
         ))
         .attr('y', (_, index) => (
           style.paddingY + style.lineHeight * (Math.floor(index / style.studentsPerRow) + 2)
@@ -362,7 +406,9 @@ export class SchoolOverlay {
     merged.interrupt()
       .transition()
       .duration(defaultConfig.layoutTransitionDurationMs)
-      .attr('transform', (scene) => `translate(${scene.rect.x},${scene.rect.y})`)
+      .attr('transform', (scene) => (
+        `translate(${scene.rect.x},${scene.rect.y}) scale(${scene.scale})`
+      ))
       .attr('opacity', 1);
 
     labels.exit()
@@ -382,7 +428,9 @@ export class SchoolOverlay {
       .append('g')
       .attr('class', 'foreign-schools-panel')
       .attr('opacity', 0)
-      .attr('transform', (scene) => `translate(${scene.rect.x},${scene.rect.y})`)
+      .attr('transform', (scene) => (
+        `translate(${scene.rect.x},${scene.rect.y}) scale(${scene.scale})`
+      ))
       .style('pointer-events', 'auto');
     entered.append('rect')
       .attr('class', 'foreign-panel-background')
@@ -396,10 +444,11 @@ export class SchoolOverlay {
       .attr('data-panel-x', (panel) => panel.rect.x)
       .attr('data-panel-y', (panel) => panel.rect.y)
       .attr('data-panel-width', (panel) => panel.rect.width)
-      .attr('data-panel-height', (panel) => panel.rect.height);
+      .attr('data-panel-height', (panel) => panel.rect.height)
+      .attr('data-label-scale', (panel) => panel.scale);
     merged.select<SVGRectElement>('rect.foreign-panel-background')
-      .attr('width', (panel) => panel.rect.width)
-      .attr('height', (panel) => panel.rect.height);
+      .attr('width', (panel) => panel.baseSize.width)
+      .attr('height', (panel) => panel.baseSize.height);
 
     merged.each(function updateSchools(panel) {
       let offsetY = style.paddingY;
@@ -437,7 +486,7 @@ export class SchoolOverlay {
           .merge(students)
           .attr('x', (_, index) => (
             (index % style.studentsPerRow) * (
-              (panel.rect.width - style.paddingX * 2) / style.studentsPerRow
+              (panel.baseSize.width - style.paddingX * 2) / style.studentsPerRow
             )
           ))
           .attr('y', (_, index) => (
@@ -466,7 +515,9 @@ export class SchoolOverlay {
     merged.interrupt()
       .transition()
       .duration(defaultConfig.layoutTransitionDurationMs)
-      .attr('transform', (panel) => `translate(${panel.rect.x},${panel.rect.y})`)
+      .attr('transform', (panel) => (
+        `translate(${panel.rect.x},${panel.rect.y}) scale(${panel.scale})`
+      ))
       .attr('opacity', 1);
     panels.exit()
       .interrupt()

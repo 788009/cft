@@ -192,12 +192,60 @@ test('restores re-entering school labels at their saved position without sliding
     return {
       initialTransform: capture?.transform ?? null,
       expectedTransform: label
-        ? `translate(${label.dataset.labelX},${label.dataset.labelY})`
+        ? `translate(${label.dataset.labelX},${label.dataset.labelY}) scale(${label.dataset.labelScale})`
         : null,
     };
   }, reEnteringSchool);
 
   expect(result.initialTransform).toBe(result.expectedTransform);
+});
+
+test('shrinks every card only when needed and restores full size with available space', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 300 });
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  const labels = map.locator('g.school-label');
+  await expect(labels).not.toHaveCount(0);
+  const compact = await map.evaluate((container) => {
+    const overlayNode = container.querySelector<SVGGElement>('g.school-overlay');
+    const scale = Number(overlayNode?.dataset.labelScale);
+    const spacing = Number(overlayNode?.dataset.labelSpacing);
+    const cards = Array.from(container.querySelectorAll<SVGGElement>('g.school-label')).map((label) => ({
+      x: Number(label.dataset.labelX),
+      y: Number(label.dataset.labelY),
+      width: Number(label.dataset.labelWidth),
+      height: Number(label.dataset.labelHeight),
+      scale: Number(label.dataset.labelScale),
+      transform: label.getAttribute('transform') ?? '',
+    }));
+    const conflicts = cards.flatMap((card, index) => cards.slice(index + 1).filter((other) => !(
+      card.x + card.width + spacing <= other.x ||
+      other.x + other.width + spacing <= card.x ||
+      card.y + card.height + spacing <= other.y ||
+      other.y + other.height + spacing <= card.y
+    ))).length;
+    return {
+      scale,
+      fits: overlayNode?.dataset.layoutFits,
+      conflicts,
+      allCardsShareScale: cards.every((card) => (
+        card.scale === scale && card.transform.includes(`scale(${scale})`)
+      )),
+    };
+  });
+
+  expect(compact.scale).toBeLessThan(1);
+  expect(compact.fits).toBe('true');
+  expect(compact.conflicts).toBe(0);
+  expect(compact.allCardsShareScale).toBe(true);
+
+  await page.setViewportSize({ width: 1_440, height: 900 });
+  await expect.poll(async () => Number(await overlay.getAttribute('data-label-scale'))).toBe(1);
+  await expect.poll(() => labels.evaluateAll((nodes) => nodes.every((node) => (
+    (node as SVGGElement).dataset.labelScale === '1'
+  )))).toBe(true);
 });
 
 test('reserves the configured corner for foreign schools and toggles it with map coverage', async ({ page }) => {
@@ -210,6 +258,10 @@ test('reserves the configured corner for foreign schools and toggles it with map
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('opacity', '1');
   await expect(panel).toHaveAttribute('data-corner', 'top-right');
+  await expect.poll(async () => (
+    await map.locator('g.school-overlay').getAttribute('data-label-scale') ===
+    await panel.getAttribute('data-label-scale')
+  )).toBe(true);
   await expect(panel.locator('g.foreign-school-group')).not.toHaveCount(0);
   await expect(panel.locator('text.student-name')).not.toHaveCount(0);
 
