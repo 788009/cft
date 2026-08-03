@@ -9,3 +9,19 @@
 .student-name {
   cursor: pointer;
 }
+
+.region-actionable {
+  cursor: pointer;
+  transition: fill 120ms ease;
+}
+
+.region-actionable:hover,
+.region-actionable:focus-visible {
+  fill: #ccfbf1;
+}
+
+.region-actionable:focus-visible {
+  outline: none;
+  stroke: #0f766e;
+  stroke-width: 2;
+}

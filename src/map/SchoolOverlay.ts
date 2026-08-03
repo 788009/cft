@@ -48,7 +48,7 @@ function labelSize(school: SchoolGroup): { width: number; height: number } {
   };
 }
 
-function centeredInfoRect(width: number, height: number): Rect {
+export function getInfoRectangle(width: number, height: number): Rect {
   const rectWidth = width * defaultConfig.infoRectangleWidthRatio;
   const rectHeight = height * defaultConfig.infoRectangleHeightRatio;
   return {
@@ -126,8 +126,13 @@ export class SchoolOverlay {
   }
 
   public setData(data: ProcessedData): void {
-    this.domesticSchools = data.domesticSchools;
-    this.foreignSchools = data.foreignSchools;
+    this.setSchools(data.domesticSchools, data.foreignSchools);
+  }
+
+  public setSchools(domesticSchools: SchoolGroup[], foreignSchools: SchoolGroup[]): void {
+    this.domesticSchools = domesticSchools;
+    this.foreignSchools = foreignSchools;
+    this.positionHistory.clear();
   }
 
   public update(
@@ -136,7 +141,7 @@ export class SchoolOverlay {
     projection: GeoProjection,
     transform: ZoomTransform,
   ): void {
-    const infoRect = centeredInfoRect(width, height);
+    const infoRect = getInfoRectangle(width, height);
     const margin = defaultConfig.canvasMargin;
     const canvasRect: Rect = {
       x: margin,

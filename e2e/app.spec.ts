@@ -202,3 +202,75 @@ test('reserves the configured corner for foreign schools and toggles it with map
   await page.mouse.wheel(0, 2_400);
   await expect(panel).toBeVisible();
 });
+
+test('opens a static province detail scene with every indexed school', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const provincePaths = map.locator('.layer-provinces-fill path.region-actionable');
+  await expect(provincePaths).not.toHaveCount(0);
+  const provincePath = provincePaths.first();
+  await provincePath.click({ force: true });
+
+  const dialog = page.getByTestId('region-detail-dialog');
+  const detailMap = page.getByTestId('region-detail-map');
+  await expect(dialog).toBeVisible();
+  await expect(detailMap).toHaveAttribute('data-region-level', 'province');
+  await expect(detailMap.locator('.region-detail-geometry path')).not.toHaveCount(0);
+  await expect(detailMap.locator('g.school-label')).not.toHaveCount(0);
+
+  const expectedSchoolCount = Number(await detailMap.getAttribute('data-region-school-count'));
+  await expect(detailMap.locator('g.school-label')).toHaveCount(expectedSchoolCount);
+  const initialGeometryTransform = await detailMap.locator('.region-detail-geometry').getAttribute('transform');
+  const detailBox = await detailMap.boundingBox();
+  if (!detailBox) throw new Error('地区详情地图没有可用尺寸');
+  await page.mouse.move(detailBox.x + detailBox.width / 2, detailBox.y + detailBox.height / 2);
+  await page.mouse.wheel(0, -1_200);
+  await expect.poll(() => detailMap.locator('.region-detail-geometry').getAttribute('transform'))
+    .toBe(initialGeometryTransform);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('opens city details at city level and does not drill down from districts', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -1_200);
+  await expect(svg).toHaveAttribute('data-map-level', 'city');
+
+  const cityPaths = map.locator('.layer-cities path.region-actionable');
+  await expect(cityPaths).not.toHaveCount(0);
+  const cityHitPoint = await map.evaluate((container) => {
+    const rect = container.getBoundingClientRect();
+    for (let y = Math.max(0, rect.top); y < Math.min(window.innerHeight, rect.bottom); y += 4) {
+      for (let x = Math.max(0, rect.left); x < Math.min(window.innerWidth, rect.right); x += 4) {
+        const element = document.elementFromPoint(x, y);
+        if (element?.matches('.layer-cities path.region-actionable')) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (!cityHitPoint) throw new Error('当前视口内没有可点击的城市区域');
+  await page.mouse.click(cityHitPoint.x, cityHitPoint.y);
+  const dialog = page.getByTestId('region-detail-dialog');
+  const detailMap = page.getByTestId('region-detail-map');
+  await expect(dialog).toBeVisible();
+  await expect(detailMap).toHaveAttribute('data-region-level', 'city');
+  await expect(detailMap.locator('.region-detail-geometry path')).not.toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -1_200);
+  await expect(svg).toHaveAttribute('data-map-level', 'district');
+  await cityPaths.first().evaluate((path) => {
+    path.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await expect(dialog).toHaveCount(0);
+});

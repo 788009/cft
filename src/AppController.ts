@@ -2,12 +2,14 @@ import { loadInitialData } from '@/data/fetcher';
 import { MapRenderer } from '@/map/Renderer';
 import { ViewState } from '@/state/ViewState';
 import type { ProcessedData } from '@/types';
+import { DetailController } from '@/details/DetailController';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
   private readonly mapContainer: HTMLElement;
   private readonly uiContainer: HTMLElement;
   private readonly viewState: ViewState;
+  private readonly details: DetailController;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
   private renderVersion = 0;
@@ -18,6 +20,7 @@ export class AppController {
     this.mapContainer = this.requireElement('map-container');
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
+    this.details = new DetailController(this.uiContainer);
   }
 
   public start(): void {
@@ -34,6 +37,7 @@ export class AppController {
     window.removeEventListener('resize', this.handleResize);
     this.renderer?.destroy();
     this.renderer = null;
+    this.details.closeAll();
   }
 
   private readonly handleResize = (): void => {
@@ -54,6 +58,7 @@ export class AppController {
       this.renderVersion += 1;
       this.renderer?.destroy();
       this.renderer = null;
+      this.details.closeAll();
       return;
     }
 
@@ -73,6 +78,7 @@ export class AppController {
 
       const renderer = new MapRenderer('map-container', {
         onViewChange: (view) => this.viewState.updateMap(view),
+        onRegionSelect: (selection) => this.details.openRegion(selection, data),
       });
       this.renderer = renderer;
       renderer.setData(data);

@@ -6,48 +6,12 @@ import { MAP_STYLES } from '@/config';
 import type { ProcessedData } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
+import { rewindFeature } from './geo';
+import type { RegionSelection } from '@/details/types';
 
 export interface MapRendererOptions {
   onViewChange?: (view: MapViewState) => void;
-}
-
-// 计算多边形顶点缠绕面积
-function ringArea(ring: number[][]): number {
-  let area = 0;
-  for (let i = 0, len = ring.length, j = len - 1; i < len; j = i++) {
-    const p1 = ring[i];
-    const p2 = ring[j];
-    area += (p2[0] - p1[0]) * (p2[1] + p1[1]);
-  }
-  return area;
-}
-
-// 纠正 Feature 中的多边形缠绕方向 (RFC 7946 标准：外环逆时针 area < 0)
-function rewindFeature(feature: any): any {
-  if (!feature || !feature.geometry) return feature;
-  
-  const cloned = JSON.parse(JSON.stringify(feature));
-  const geom = cloned.geometry;
-
-  const fixPolygon = (rings: number[][][]) => {
-    if (!rings || rings.length === 0) return rings;
-    if (ringArea(rings[0]) > 0) {
-      rings[0].reverse();
-    }
-    for (let i = 1; i < rings.length; i++) {
-      if (ringArea(rings[i]) < 0) {
-        rings[i].reverse();
-      }
-    }
-    return rings;
-  };
-
-  if (geom.type === 'Polygon') {
-    fixPolygon(geom.coordinates);
-  } else if (geom.type === 'MultiPolygon') {
-    geom.coordinates.forEach((polygon: number[][][]) => fixPolygon(polygon));
-  }
-  return cloned;
+  onRegionSelect?: (selection: RegionSelection) => void;
 }
 
 export class MapRenderer {
@@ -60,9 +24,12 @@ export class MapRenderer {
   private levelManager: LevelManager;
   private destroyed = false;
   private readonly onViewChange?: (view: MapViewState) => void;
+  private readonly onRegionSelect?: (selection: RegionSelection) => void;
   
   private validProvinces = new Set<string>();
   private validCities = new Set<string>();
+  private readonly provinceNames = new Map<string, string>();
+  private readonly cityNames = new Map<string, string>();
   private geoCache = new Map<string, any>();
   
   private requestedLevel: MapLevel = 'province';
@@ -87,6 +54,7 @@ export class MapRenderer {
     if (!el) throw new Error(`找不到容器: ${containerId}`);
     this.container = el;
     this.onViewChange = options.onViewChange;
+    this.onRegionSelect = options.onRegionSelect;
 
     const { width, height } = this.container.getBoundingClientRect();
     this.width = width;
@@ -104,8 +72,8 @@ export class MapRenderer {
 
     this.layers = {
       provincesFill: this.g.append('g').attr('class', 'layer-provinces-fill'),
-      cities: this.g.append('g').attr('class', 'layer-cities').style('opacity', 0),
-      districts: this.g.append('g').attr('class', 'layer-districts').style('opacity', 0),
+      cities: this.g.append('g').attr('class', 'layer-cities').style('opacity', 0).style('pointer-events', 'none'),
+      districts: this.g.append('g').attr('class', 'layer-districts').style('opacity', 0).style('pointer-events', 'none'),
       provincesBorder: this.g.append('g').attr('class', 'layer-provinces-border').style('pointer-events', 'none'),
       tendash: this.g.append('g').attr('class', 'layer-tendash').style('pointer-events', 'none')
     };
@@ -125,10 +93,14 @@ export class MapRenderer {
   public setData(data: ProcessedData) {
     this.validProvinces.clear();
     this.validCities.clear();
+    this.provinceNames.clear();
+    this.cityNames.clear();
     
     for (const school of data.domesticSchools) {
       if (school.provinceAdcode) this.validProvinces.add(String(school.provinceAdcode));
       if (school.cityAdcode) this.validCities.add(String(school.cityAdcode));
+      if (school.provinceAdcode) this.provinceNames.set(String(school.provinceAdcode), school.province);
+      if (school.cityAdcode) this.cityNames.set(String(school.cityAdcode), school.city);
     }
     this.schoolOverlay.setData(data);
     this.updateSchoolOverlay();
@@ -201,6 +173,7 @@ export class MapRenderer {
           return this.validProvinces.has(adcode) ? '#ffffff' : '#e5e7eb';
         })
         .attr('stroke', 'none');
+      this.bindRegionInteractions(this.layers.provincesFill.selectAll('path'), 'province');
 
       // 2. 省级主边界
       this.layers.provincesBorder.selectAll('path')
@@ -257,6 +230,8 @@ export class MapRenderer {
       
     this.layers.districts.transition().duration(250)
       .style('opacity', level === 'district' ? 1 : 0);
+    this.layers.provincesFill.style('pointer-events', level === 'province' ? 'auto' : 'none');
+    this.layers.cities.style('pointer-events', level === 'city' ? 'auto' : 'none');
   }
 
   private renderCities(): Promise<boolean> {
@@ -279,6 +254,7 @@ export class MapRenderer {
         .attr('stroke', MAP_STYLES.cities.stroke)
         .attr('stroke-width', MAP_STYLES.cities.strokeWidth)
         .attr('vector-effect', 'non-scaling-stroke');
+      this.bindRegionInteractions(this.layers.cities.selectAll('path'), 'city');
 
       return features.length > 0;
     });
@@ -329,6 +305,43 @@ export class MapRenderer {
       k: this.currentTransform.k,
       level,
     });
+  }
+
+  private bindRegionInteractions(
+    paths: d3.Selection<SVGPathElement, any, SVGGElement, unknown>,
+    level: RegionSelection['level'],
+  ): void {
+    const adcodeFor = (feature: any): string => String(
+      level === 'province'
+        ? feature.properties?.province_adcode
+        : feature.properties?.city_adcode || feature.properties?.adcode,
+    );
+    const names = level === 'province' ? this.provinceNames : this.cityNames;
+    const valid = level === 'province' ? this.validProvinces : this.validCities;
+    const activate = (event: Event, feature: any): void => {
+      if (this.requestedLevel !== level) return;
+      const adcode = adcodeFor(feature);
+      const name = names.get(adcode);
+      if (!valid.has(adcode) || !name) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.onRegionSelect?.({ level, adcode, name });
+    };
+
+    paths
+      .classed('region-actionable', (feature) => valid.has(adcodeFor(feature)))
+      .attr('data-region-level', (feature) => valid.has(adcodeFor(feature)) ? level : null)
+      .attr('data-region-adcode', (feature) => valid.has(adcodeFor(feature)) ? adcodeFor(feature) : null)
+      .attr('role', (feature) => valid.has(adcodeFor(feature)) ? 'button' : null)
+      .attr('tabindex', (feature) => valid.has(adcodeFor(feature)) ? 0 : null)
+      .attr('aria-label', (feature) => {
+        const name = names.get(adcodeFor(feature));
+        return name ? `查看${name}详情` : null;
+      })
+      .on('click', activate)
+      .on('keydown', (event: KeyboardEvent, feature) => {
+        if (event.key === 'Enter' || event.key === ' ') activate(event, feature);
+      });
   }
 
   private updateSchoolOverlay(): void {
