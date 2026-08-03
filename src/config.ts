@@ -33,8 +33,12 @@ export interface AppConfig {
   };
 }
 
+export function resolveDataBasePath(baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, '')}/data`;
+}
+
 export const defaultConfig: AppConfig = {
-  dataBasePath: '/data',
+  dataBasePath: resolveDataBasePath(import.meta.env.BASE_URL),
   infoRectangleWidthRatio: 0.5,
   infoRectangleHeightRatio: 0.5,
   canvasMargin: 20,
