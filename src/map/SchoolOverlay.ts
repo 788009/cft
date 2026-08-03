@@ -429,6 +429,8 @@ export class SchoolOverlay {
         this.applyLineHighlight();
       });
 
+    this.applyLineHighlight();
+
     merged.select<SVGRectElement>('rect.school-label-background')
       .attr('width', (scene) => scene.baseSize.width)
       .attr('height', (scene) => scene.baseSize.height);
@@ -505,6 +507,10 @@ export class SchoolOverlay {
         return touchSelectedSchoolId !== null && scene.id === touchSelectedSchoolId;
       });
     highlighted.filter('.is-highlighted').raise();
+    this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
+      .classed('is-highlighted', (scene) => (
+        scene.id === hoveredSchoolId || scene.id === touchSelectedSchoolId
+      ));
   }
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {

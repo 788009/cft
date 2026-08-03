@@ -238,10 +238,15 @@ test('highlights school lines from card and region hover', async ({ page }) => {
   const schoolLine = map.locator(`line.school-line[data-school="${escapedSchool}"]`);
 
   await label.hover();
+  await expect(label).toHaveClass(/is-highlighted/);
   await expect(schoolLine).toHaveClass(/is-highlighted/);
   await expect.poll(() => schoolLine.evaluate((line) => getComputedStyle(line).strokeWidth))
     .toBe('3px');
+  await expect.poll(() => label.locator('rect.school-label-background').evaluate(
+    (background) => getComputedStyle(background).strokeWidth,
+  )).toBe('2px');
   await page.mouse.move(2, 2);
+  await expect(label).not.toHaveClass(/is-highlighted/);
   await expect(schoolLine).not.toHaveClass(/is-highlighted/);
 
   const provinceAdcode = await schoolLine.getAttribute('data-province-adcode');
@@ -305,9 +310,11 @@ test.describe('touch line highlighting', () => {
       titleBox.x + titleBox.width / 2,
       titleBox.y + titleBox.height / 2,
     );
+    await expect(label).toHaveClass(/is-highlighted/);
     await expect(schoolLine).toHaveClass(/is-highlighted/);
 
     await page.getByTestId('settings-button').tap();
+    await expect(label).not.toHaveClass(/is-highlighted/);
     await expect(schoolLine).not.toHaveClass(/is-highlighted/);
   });
 });

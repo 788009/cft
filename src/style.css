@@ -55,6 +55,15 @@
   opacity: 1;
 }
 
+.school-label-background {
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+
+.school-label.is-highlighted .school-label-background {
+  stroke: #0f766e;
+  stroke-width: 2;
+}
+
 .dark .layer-provinces-fill path[data-has-schools="true"],
 .dark .layer-cities path[data-has-schools="true"],
 .dark .layer-districts path,
@@ -85,6 +94,10 @@
 }
 
 .dark .school-line.is-highlighted {
+  stroke: #5eead4;
+}
+
+.dark .school-label.is-highlighted .school-label-background {
   stroke: #5eead4;
 }
 
