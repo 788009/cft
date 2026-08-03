@@ -67,3 +67,27 @@ export const defaultConfig: AppConfig = {
     defaultFit: 'cover',
   },
 };
+
+// 地图样式配置项
+export const MAP_STYLES = {
+  // 省级边界
+  provincesBorder: {
+    stroke: '#6b7280',
+    strokeWidth: 0.4,
+  },
+  // 十段线
+  tenDash: {
+    stroke: '#6b7280',
+    strokeWidth: 1.2,
+  },
+  // 地级市轮廓
+  cities: {
+    stroke: '#a1a1aa',
+    strokeWidth: 0.3,
+  },
+  // 区县轮廓
+  districts: {
+    stroke: '#d4d4d8',
+    strokeWidth: 0.15,
+  },
+};
