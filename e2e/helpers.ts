@@ -33,3 +33,22 @@ export async function centerDomesticSchools(page: Page): Promise<void> {
   await page.mouse.up();
   await expect(map.locator('g.school-overlay')).toHaveAttribute('data-all-domestic-in-range', 'true');
 }
+
+export async function zoomMapToScale(
+  page: Page,
+  targetScale: number,
+  pointer?: { x: number; y: number },
+): Promise<void> {
+  const svg = page.getByTestId('map-container').locator('svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  const currentScale = await svg.evaluate((node) => (
+    (node as SVGSVGElement & { __zoom?: { k: number } }).__zoom?.k ?? 1
+  ));
+  const deltaY = -Math.log2(targetScale / currentScale) / 0.002;
+  await page.mouse.move(pointer?.x ?? box.x + box.width / 2, pointer?.y ?? box.y + box.height / 2);
+  await page.mouse.wheel(0, deltaY);
+  await expect.poll(() => svg.evaluate((node) => (
+    (node as SVGSVGElement & { __zoom?: { k: number } }).__zoom?.k ?? 1
+  ))).toBeCloseTo(targetScale, 2);
+}

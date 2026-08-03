@@ -1,12 +1,13 @@
 import * as d3 from 'd3';
-import { createProjection } from './projection';
+import { createProjection, getProjectedPoint } from './projection';
 import { LevelManager, type MapLevel } from './LevelManager';
 import { loadGeoJSON } from '@/data/fetcher';
 import { MAP_STYLES, defaultConfig, type MapInteractionMode } from '@/config';
 import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
-import type { InfoRectanglePlacement } from './InfoRectangle';
+import { getInfoRectangle, type InfoRectanglePlacement } from './InfoRectangle';
+import { calculateInitialMapTransform } from './InitialView';
 import { rewindFeature } from './geo';
 import type { RegionSelection } from '@/details/types';
 import {
@@ -60,6 +61,10 @@ export class MapRenderer {
   private districtsRenderPromise: Promise<boolean> | null = null;
   private currentTransform = d3.zoomIdentity;
   private zoomInteractionChanged = false;
+  private applyingInitialView = false;
+  private initialViewApplied = false;
+  private baseMapRendered = false;
+  private dataReady = false;
   private interactionMode: MapInteractionMode;
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
@@ -127,7 +132,7 @@ export class MapRenderer {
     this.levelManager = new LevelManager();
 
     this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([1, 20])
+      .scaleExtent([defaultConfig.mapZoomExtent.min, defaultConfig.mapZoomExtent.max])
       .on('start', () => this.handleZoomStart())
       .on('zoom', (event) => this.handleZoom(event))
       .on('end', () => this.handleZoomEnd());
@@ -141,6 +146,7 @@ export class MapRenderer {
     this.provinceNames.clear();
     this.cityNames.clear();
     this.domesticSchools = data.domesticSchools;
+    this.dataReady = true;
     
     for (const school of data.domesticSchools) {
       if (school.provinceAdcode) this.validProvinces.add(String(school.provinceAdcode));
@@ -149,7 +155,7 @@ export class MapRenderer {
       if (school.cityAdcode) this.cityNames.set(String(school.cityAdcode), school.city);
     }
     this.schoolOverlay.setData(data);
-    this.updateSchoolOverlay();
+    if (this.baseMapRendered) this.applyInitialView();
   }
 
   public setInteractionMode(mode: MapInteractionMode): void {
@@ -194,14 +200,20 @@ export class MapRenderer {
 
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {
     if (this.destroyed) return;
-    if (this.interactionMode === 'hide-and-reflow' && !this.zoomInteractionChanged) {
+    if (
+      !this.applyingInitialView &&
+      this.interactionMode === 'hide-and-reflow' &&
+      !this.zoomInteractionChanged
+    ) {
       this.zoomInteractionChanged = true;
       this.schoolOverlay.setInteractionActive(true);
     }
     this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
     this.updateRegionLabelScale();
-    if (this.interactionMode === 'stable') this.updateSchoolOverlay();
+    if (!this.applyingInitialView && this.interactionMode === 'stable') {
+      this.updateSchoolOverlay();
+    }
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);
 
@@ -216,6 +228,7 @@ export class MapRenderer {
   private handleZoomEnd(): void {
     if (
       this.destroyed ||
+      this.applyingInitialView ||
       this.interactionMode !== 'hide-and-reflow' ||
       !this.zoomInteractionChanged
     ) return;
@@ -304,6 +317,9 @@ export class MapRenderer {
         .attr('stroke-width', MAP_STYLES.tenDash.strokeWidth)
         .attr('vector-effect', 'non-scaling-stroke')
         .attr('fill', 'none');
+
+      this.baseMapRendered = true;
+      this.applyInitialView();
 
     } catch (error) {
       console.error('基础地图渲染失败:', error);
@@ -549,5 +565,48 @@ export class MapRenderer {
       this.projection,
       this.currentTransform,
     );
+  }
+
+  private applyInitialView(): void {
+    if (
+      this.destroyed ||
+      this.initialViewApplied ||
+      !this.baseMapRendered ||
+      !this.dataReady
+    ) return;
+
+    const points = this.domesticSchools.flatMap((school) => {
+      if (school.lat === null || school.lng === null) return [];
+      const point = getProjectedPoint(this.projection, school.lat, school.lng);
+      return point ? [point] : [];
+    });
+    const infoRectangle = getInfoRectangle(
+      this.width,
+      this.height,
+      this.schoolOverlay.getInfoRectanglePlacement(),
+    );
+    const fitted = calculateInitialMapTransform(
+      points,
+      { width: this.width, height: this.height },
+      infoRectangle,
+      defaultConfig.initialSchoolExtentRatio,
+    );
+    const transform = d3.zoomIdentity.translate(fitted.x, fitted.y).scale(fitted.k);
+    this.zoomBehavior.scaleExtent([
+      Math.min(defaultConfig.mapZoomExtent.min, fitted.k),
+      Math.max(defaultConfig.mapZoomExtent.max, fitted.k),
+    ]);
+    this.applyingInitialView = true;
+    try {
+      this.svg.call(this.zoomBehavior.transform, transform);
+    } finally {
+      this.applyingInitialView = false;
+    }
+    this.initialViewApplied = true;
+    this.svg
+      .attr('data-initial-view-applied', 'true')
+      .attr('data-initial-view-scale', fitted.k);
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
   }
 }

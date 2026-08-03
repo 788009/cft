@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { centerDomesticSchools } from './helpers';
+import { centerDomesticSchools, zoomMapToScale } from './helpers';
 
 test('switches between portrait guidance and the landscape map', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
@@ -22,6 +22,41 @@ test('switches between portrait guidance and the landscape map', async ({ page }
   await expect(map.locator('.layer-provinces-fill path')).not.toHaveCount(0);
 });
 
+test('centers domestic school extremes and fits their dominant span to the information range', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  await expect(svg).toHaveAttribute('data-initial-view-applied', 'true');
+  const geometry = await map.evaluate((container) => {
+    const svgNode = container.querySelector<SVGSVGElement>('svg');
+    const overlay = container.querySelector<SVGGElement>('g.school-overlay');
+    const info = container.querySelector<SVGRectElement>('rect.info-rectangle');
+    if (!svgNode || !overlay || !info) return null;
+    return {
+      viewportWidth: svgNode.viewBox.baseVal.width,
+      viewportHeight: svgNode.viewBox.baseVal.height,
+      minX: Number(overlay.dataset.domesticAnchorMinX),
+      maxX: Number(overlay.dataset.domesticAnchorMaxX),
+      minY: Number(overlay.dataset.domesticAnchorMinY),
+      maxY: Number(overlay.dataset.domesticAnchorMaxY),
+      infoWidth: Number(info.getAttribute('width')),
+      infoHeight: Number(info.getAttribute('height')),
+      allDomesticInRange: overlay.dataset.allDomesticInRange,
+    };
+  });
+  if (!geometry) throw new Error('缺少初始地图或学校锚点几何信息');
+
+  expect((geometry.minX + geometry.maxX) / 2).toBeCloseTo(geometry.viewportWidth / 2, 5);
+  expect((geometry.minY + geometry.maxY) / 2).toBeCloseTo(geometry.viewportHeight / 2, 5);
+  const horizontalRatio = (geometry.maxX - geometry.minX) / geometry.infoWidth;
+  const verticalRatio = (geometry.maxY - geometry.minY) / geometry.infoHeight;
+  expect(Math.max(horizontalRatio, verticalRatio)).toBeCloseTo(0.8, 5);
+  expect(horizontalRatio).toBeLessThanOrEqual(0.8 + 1e-6);
+  expect(verticalRatio).toBeLessThanOrEqual(0.8 + 1e-6);
+  expect(geometry.allDomesticInRange).toBe('true');
+});
+
 test('zooms, changes detail level, pans and recomputes paths after resize', async ({ page }) => {
   await page.goto('/');
 
@@ -35,12 +70,11 @@ test('zooms, changes detail level, pans and recomputes paths after resize', asyn
   const box = await svg.boundingBox();
   if (!box) throw new Error('地图 SVG 没有可用尺寸');
 
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 3);
   await expect(svg).toHaveAttribute('data-map-level', 'city');
   await expect(map.locator('.layer-cities path')).not.toHaveCount(0);
 
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 7);
   await expect(svg).toHaveAttribute('data-map-level', 'district');
   await expect(map.locator('.layer-districts path')).not.toHaveCount(0);
 
@@ -276,10 +310,7 @@ test('shows region names for the current map level and toggles them from setting
   await page.getByTestId('close-settings-dialog').click();
   await expect(provinceLabels.first()).toBeVisible();
 
-  const svgBox = await svg.boundingBox();
-  if (!svgBox) throw new Error('地图 SVG 没有可用尺寸');
-  await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2);
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 3);
   await expect(svg).toHaveAttribute('data-map-level', 'city');
   const cityLabels = map.locator('.layer-city-labels text.region-name-label');
   await expect(cityLabels).not.toHaveCount(0);
@@ -288,7 +319,7 @@ test('shows region names for the current map level and toggles them from setting
   expect(await visibleLabelCount(cityLabels)).toBeLessThan(await cityLabels.count());
   await expect(provinceLabels.first()).toBeHidden();
 
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 7);
   await expect(svg).toHaveAttribute('data-map-level', 'district');
   const districtLabels = map.locator('.layer-district-labels text.region-name-label');
   await expect(districtLabels).not.toHaveCount(0);
@@ -350,6 +381,8 @@ test('moves and resizes the information range in its dedicated editing mode', as
 
   const map = page.getByTestId('map-container');
   const infoRectangle = map.locator('rect.info-rectangle');
+  await expect(map.locator('svg')).toHaveAttribute('data-initial-view-applied', 'true');
+  await expect(infoRectangle).toBeVisible();
   const rectangleGeometry = async (rectangle = infoRectangle) => ({
     x: Number(await rectangle.getAttribute('x')),
     y: Number(await rectangle.getAttribute('y')),
@@ -520,11 +553,14 @@ test('highlights school lines from card and region hover', async ({ page }) => {
   const anchorX = Number(await schoolLine.getAttribute('x1'));
   const anchorY = Number(await schoolLine.getAttribute('y1'));
   if (!svgBox) throw new Error('地图 SVG 没有可用尺寸');
-  await page.mouse.move(svgBox.x + anchorX, svgBox.y + anchorY);
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 3, {
+    x: svgBox.x + anchorX,
+    y: svgBox.y + anchorY,
+  });
   await expect(svg).toHaveAttribute('data-map-level', 'city');
-  const cityLine = map.locator('line.school-line').first();
-  await expect(cityLine).toBeVisible();
+  const cityLine = schoolLine;
+  await expect(cityLine).toHaveAttribute('opacity', '0.72');
+  expect(await cityLine.evaluate((line) => getComputedStyle(line).visibility)).toBe('visible');
   const cityAdcode = await cityLine.getAttribute('data-city-adcode');
   if (!cityAdcode) throw new Error('学校连线缺少市级 adcode');
   const city = map.locator(
@@ -785,10 +821,7 @@ test('opens city details at city level and does not drill down from districts', 
 
   const map = page.getByTestId('map-container');
   const svg = map.locator('svg');
-  const box = await svg.boundingBox();
-  if (!box) throw new Error('地图 SVG 没有可用尺寸');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 3);
   await expect(svg).toHaveAttribute('data-map-level', 'city');
 
   const cityPaths = map.locator('.layer-cities path.region-actionable');
@@ -813,8 +846,7 @@ test('opens city details at city level and does not drill down from districts', 
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, -1_200);
+  await zoomMapToScale(page, 7);
   await expect(svg).toHaveAttribute('data-map-level', 'district');
   await cityPaths.first().evaluate((path) => {
     path.dispatchEvent(new MouseEvent('click', { bubbles: true }));

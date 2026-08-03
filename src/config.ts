@@ -12,6 +12,11 @@ export interface AppConfig {
     handleSize: number;
     handleHitSize: number;
   };
+  initialSchoolExtentRatio: number;
+  mapZoomExtent: {
+    min: number;
+    max: number;
+  };
   canvasMargin: number;
   labelSpacing: number;
   layoutTransitionDurationMs: number;
@@ -78,6 +83,11 @@ export const defaultConfig: AppConfig = {
     minHeight: 80,
     handleSize: 12,
     handleHitSize: 44,
+  },
+  initialSchoolExtentRatio: 0.8,
+  mapZoomExtent: {
+    min: 1,
+    max: 20,
   },
   canvasMargin: 20,
   labelSpacing: 4,

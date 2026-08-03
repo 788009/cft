@@ -15,6 +15,8 @@ describe('App config', () => {
       handleSize: 12,
       handleHitSize: 44,
     });
+    expect(defaultConfig.initialSchoolExtentRatio).toBe(0.8);
+    expect(defaultConfig.mapZoomExtent).toEqual({ min: 1, max: 20 });
   });
 
   it('keeps settings placement and the default interaction mode configurable', () => {
