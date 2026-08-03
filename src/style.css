@@ -45,11 +45,6 @@
   stroke-width: 2;
 }
 
-.dark .region-actionable:hover,
-.dark .region-actionable:focus-visible {
-  fill: #134e4a;
-}
-
 .dark .layer-provinces-fill path[data-has-schools="true"],
 .dark .layer-cities path[data-has-schools="true"],
 .dark .layer-districts path,
@@ -102,4 +97,9 @@
 .dark .student-name:hover,
 .dark .student-name:focus-visible {
   fill: #5eead4;
+}
+
+.dark path.region-actionable:hover,
+.dark path.region-actionable:focus-visible {
+  fill: #134e4a;
 }

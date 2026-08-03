@@ -211,6 +211,21 @@ test('follows the browser color scheme and supports explicit theme settings', as
   await expect(root).toHaveClass(/dark/);
 });
 
+test('highlights provinces on hover in dark mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+
+  const province = page.getByTestId('map-container').locator(
+    '.layer-provinces-fill path.region-actionable',
+  ).first();
+  await expect(province).toBeVisible();
+  const initialFill = await province.evaluate((element) => getComputedStyle(element).fill);
+  await province.hover({ force: true });
+  await expect.poll(() => province.evaluate((element) => getComputedStyle(element).fill))
+    .toBe('rgb(19, 78, 74)');
+  expect(initialFill).not.toBe('rgb(19, 78, 74)');
+});
+
 test('restores re-entering school labels at their saved position without sliding from the origin', async ({ page }) => {
   await page.goto('/');
 
