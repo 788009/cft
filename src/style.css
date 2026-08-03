@@ -19,14 +19,15 @@
   cursor: pointer;
 }
 
+.student-name:focus,
+.region-actionable:focus {
+  outline: none;
+}
+
 .student-name:hover,
 .student-name:focus-visible {
   fill: #0f766e;
   text-decoration: underline;
-}
-
-.student-name:focus-visible {
-  outline: none;
 }
 
 .region-actionable {
@@ -40,7 +41,6 @@
 }
 
 .region-actionable:focus-visible {
-  outline: none;
   stroke: #0f766e;
   stroke-width: 2;
 }

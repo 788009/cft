@@ -524,3 +524,23 @@ test('opens personal details from region and foreign school scenes', async ({ pa
   await expect(personDialog).toHaveCount(0);
   await expect(foreignStudent).toBeFocused();
 });
+
+test('suppresses native focus outlines on clickable SVG elements', async ({ page }) => {
+  await page.goto('/');
+
+  const province = page.getByTestId('map-container').locator(
+    '.layer-provinces-fill path.region-actionable',
+  ).first();
+  await expect(province).toBeVisible();
+  await province.click({ force: true });
+  await page.getByTestId('close-region-detail-dialog').click();
+  await expect(province).toBeFocused();
+  expect(await province.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+
+  const student = page.getByTestId('map-container').locator('text.student-name').first();
+  await expect(student).toBeVisible();
+  await student.click({ force: true });
+  await page.getByTestId('close-person-detail-dialog').click();
+  await expect(student).toBeFocused();
+  expect(await student.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+});
