@@ -116,6 +116,17 @@ export class SchoolOverlay {
   private foreignSchools: SchoolGroup[] = [];
   private readonly positionHistory = new Map<string, Rect>();
   private readonly onStudentSelect?: (student: Student) => void;
+  private hoveredSchoolId: string | null = null;
+  private hoveredRegion: { level: 'province' | 'city'; adcode: string } | null = null;
+  private touchSelectedSchoolId: string | null = null;
+  private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
+    if (event.pointerType !== 'touch') return;
+    const target = event.target;
+    const label = target instanceof Element ? target.closest('g.school-label') : null;
+    if (label && this.labelsLayer.node()?.contains(label)) return;
+    this.touchSelectedSchoolId = null;
+    this.applyLineHighlight();
+  };
 
   constructor(
     svg: Selection<SVGSVGElement, unknown, null, undefined>,
@@ -137,6 +148,7 @@ export class SchoolOverlay {
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
     this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
+    document.addEventListener('pointerdown', this.handleDocumentPointerDown, true);
   }
 
   public setData(data: ProcessedData): void {
@@ -147,6 +159,24 @@ export class SchoolOverlay {
     this.domesticSchools = domesticSchools;
     this.foreignSchools = foreignSchools;
     this.positionHistory.clear();
+    this.hoveredSchoolId = null;
+    this.hoveredRegion = null;
+    this.touchSelectedSchoolId = null;
+    this.applyLineHighlight();
+  }
+
+  public setHoveredRegion(level: 'province' | 'city', adcode: string): void {
+    this.hoveredRegion = { level, adcode };
+    this.applyLineHighlight();
+  }
+
+  public clearHoveredRegion(level?: 'province' | 'city', adcode?: string): void {
+    if (
+      level && adcode &&
+      (this.hoveredRegion?.level !== level || this.hoveredRegion.adcode !== adcode)
+    ) return;
+    this.hoveredRegion = null;
+    this.applyLineHighlight();
   }
 
   public setInteractionActive(active: boolean): void {
@@ -290,6 +320,7 @@ export class SchoolOverlay {
   }
 
   public destroy(): void {
+    document.removeEventListener('pointerdown', this.handleDocumentPointerDown, true);
     this.root.interrupt();
     this.root.selectAll('*').interrupt();
     this.root.remove();
@@ -307,11 +338,16 @@ export class SchoolOverlay {
       .attr('opacity', 0)
       .attr('vector-effect', 'non-scaling-stroke')
       .merge(lines)
+      .attr('data-school', (scene) => scene.school.university)
+      .attr('data-province-adcode', (scene) => scene.school.provinceAdcode)
+      .attr('data-city-adcode', (scene) => scene.school.cityAdcode)
       .attr('x1', (scene) => scene.anchor.x)
       .attr('y1', (scene) => scene.anchor.y)
       .attr('x2', (scene) => getConnectionPoint(scene.anchor, scene.rect).x)
       .attr('y2', (scene) => getConnectionPoint(scene.anchor, scene.rect).y)
       .attr('opacity', 0.72);
+
+    this.applyLineHighlight();
 
     lines.exit()
       .transition()
@@ -376,7 +412,22 @@ export class SchoolOverlay {
       .attr('data-label-y', (scene) => scene.rect.y)
       .attr('data-label-width', (scene) => scene.rect.width)
       .attr('data-label-height', (scene) => scene.rect.height)
-      .attr('data-label-scale', (scene) => scene.scale);
+      .attr('data-label-scale', (scene) => scene.scale)
+      .on('pointerenter.line-highlight', (event: PointerEvent, scene) => {
+        if (event.pointerType === 'touch') return;
+        this.hoveredSchoolId = scene.id;
+        this.applyLineHighlight();
+      })
+      .on('pointerleave.line-highlight', (event: PointerEvent, scene) => {
+        if (event.pointerType === 'touch' || this.hoveredSchoolId !== scene.id) return;
+        this.hoveredSchoolId = null;
+        this.applyLineHighlight();
+      })
+      .on('pointerdown.line-highlight', (event: PointerEvent, scene) => {
+        if (event.pointerType !== 'touch') return;
+        this.touchSelectedSchoolId = scene.id;
+        this.applyLineHighlight();
+      });
 
     merged.select<SVGRectElement>('rect.school-label-background')
       .attr('width', (scene) => scene.baseSize.width)
@@ -436,6 +487,24 @@ export class SchoolOverlay {
       .duration(defaultConfig.layoutTransitionDurationMs)
       .attr('opacity', 0)
       .remove();
+  }
+
+  private applyLineHighlight(): void {
+    const hoveredSchoolId = this.hoveredSchoolId;
+    const hoveredRegion = this.hoveredRegion;
+    const touchSelectedSchoolId = this.touchSelectedSchoolId;
+    const highlighted = this.linesLayer.selectAll<SVGLineElement, LabelScene>('line.school-line')
+      .classed('is-highlighted', (scene) => {
+        if (hoveredSchoolId) return scene.id === hoveredSchoolId;
+        if (hoveredRegion) {
+          const schoolAdcode = hoveredRegion.level === 'province'
+            ? scene.school.provinceAdcode
+            : scene.school.cityAdcode;
+          return schoolAdcode === hoveredRegion.adcode;
+        }
+        return touchSelectedSchoolId !== null && scene.id === touchSelectedSchoolId;
+      });
+    highlighted.filter('.is-highlighted').raise();
   }
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {

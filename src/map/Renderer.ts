@@ -137,6 +137,7 @@ export class MapRenderer {
     this.emitViewChange(newLevel);
 
     if (newLevel !== this.requestedLevel) {
+      this.schoolOverlay.clearHoveredRegion();
       this.requestedLevel = newLevel;
       const version = ++this.transitionVersion;
       void this.updateLayerVisibility(newLevel, version);
@@ -377,6 +378,15 @@ export class MapRenderer {
       .attr('aria-label', (feature) => {
         const name = names.get(adcodeFor(feature));
         return name ? `查看${name}详情` : null;
+      })
+      .on('pointerenter.line-highlight', (event: PointerEvent, feature) => {
+        if (event.pointerType === 'touch' || this.requestedLevel !== level) return;
+        const adcode = adcodeFor(feature);
+        if (valid.has(adcode)) this.schoolOverlay.setHoveredRegion(level, adcode);
+      })
+      .on('pointerleave.line-highlight', (event: PointerEvent, feature) => {
+        if (event.pointerType === 'touch') return;
+        this.schoolOverlay.clearHoveredRegion(level, adcodeFor(feature));
       })
       .on('click', activate)
       .on('keydown', (event: KeyboardEvent, feature) => {

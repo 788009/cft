@@ -226,6 +226,92 @@ test('highlights provinces on hover in dark mode', async ({ page }) => {
   expect(initialFill).not.toBe('rgb(19, 78, 74)');
 });
 
+test('highlights school lines from card and region hover', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const label = map.locator('g.school-label').first();
+  await expect(label).toBeVisible();
+  const school = await label.getAttribute('data-school');
+  if (!school) throw new Error('学校卡片缺少学校标识');
+  const escapedSchool = await page.evaluate((value) => CSS.escape(value), school);
+  const schoolLine = map.locator(`line.school-line[data-school="${escapedSchool}"]`);
+
+  await label.hover();
+  await expect(schoolLine).toHaveClass(/is-highlighted/);
+  await expect.poll(() => schoolLine.evaluate((line) => getComputedStyle(line).strokeWidth))
+    .toBe('3px');
+  await page.mouse.move(2, 2);
+  await expect(schoolLine).not.toHaveClass(/is-highlighted/);
+
+  const provinceAdcode = await schoolLine.getAttribute('data-province-adcode');
+  if (!provinceAdcode) throw new Error('学校连线缺少省级 adcode');
+  const province = map.locator(
+    `.layer-provinces-fill path.region-actionable[data-region-adcode="${provinceAdcode}"]`,
+  );
+  const provinceLines = map.locator(
+    `line.school-line[data-province-adcode="${provinceAdcode}"]`,
+  );
+  await province.hover({ force: true });
+  await expect(provinceLines).not.toHaveCount(0);
+  await expect.poll(() => provinceLines.evaluateAll((lines) => (
+    lines.filter((line) => line.classList.contains('is-highlighted')).length
+  ))).toBe(await provinceLines.count());
+  await expect(map.locator('line.school-line.is-highlighted')).toHaveCount(
+    await provinceLines.count(),
+  );
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('interaction-mode-stable').click();
+  await page.getByTestId('close-settings-dialog').click();
+  const svg = map.locator('svg');
+  const svgBox = await svg.boundingBox();
+  const anchorX = Number(await schoolLine.getAttribute('x1'));
+  const anchorY = Number(await schoolLine.getAttribute('y1'));
+  if (!svgBox) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(svgBox.x + anchorX, svgBox.y + anchorY);
+  await page.mouse.wheel(0, -1_200);
+  await expect(svg).toHaveAttribute('data-map-level', 'city');
+  const cityLine = map.locator('line.school-line').first();
+  await expect(cityLine).toBeVisible();
+  const cityAdcode = await cityLine.getAttribute('data-city-adcode');
+  if (!cityAdcode) throw new Error('学校连线缺少市级 adcode');
+  const city = map.locator(
+    `.layer-cities path.region-actionable[data-region-adcode="${cityAdcode}"]`,
+  );
+  const cityLines = map.locator(`line.school-line[data-city-adcode="${cityAdcode}"]`);
+  await city.hover({ force: true });
+  await expect.poll(() => cityLines.evaluateAll((lines) => (
+    lines.filter((line) => line.classList.contains('is-highlighted')).length
+  ))).toBe(await cityLines.count());
+  await expect(map.locator('line.school-line.is-highlighted')).toHaveCount(await cityLines.count());
+});
+
+test.describe('touch line highlighting', () => {
+  test.use({ hasTouch: true });
+
+  test('keeps a tapped card line highlighted until another area is tapped', async ({ page }) => {
+    await page.goto('/');
+
+    const map = page.getByTestId('map-container');
+    const label = map.locator('g.school-label').first();
+    const titleBox = await label.locator('text.school-label-title').boundingBox();
+    const school = await label.getAttribute('data-school');
+    if (!titleBox || !school) throw new Error('学校卡片不可触控');
+    const escapedSchool = await page.evaluate((value) => CSS.escape(value), school);
+    const schoolLine = map.locator(`line.school-line[data-school="${escapedSchool}"]`);
+
+    await page.touchscreen.tap(
+      titleBox.x + titleBox.width / 2,
+      titleBox.y + titleBox.height / 2,
+    );
+    await expect(schoolLine).toHaveClass(/is-highlighted/);
+
+    await page.getByTestId('settings-button').tap();
+    await expect(schoolLine).not.toHaveClass(/is-highlighted/);
+  });
+});
+
 test('restores re-entering school labels at their saved position without sliding from the origin', async ({ page }) => {
   await page.goto('/');
 

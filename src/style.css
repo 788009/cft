@@ -45,6 +45,16 @@
   stroke-width: 2;
 }
 
+.school-line {
+  transition: stroke 120ms ease, stroke-width 120ms ease, opacity 120ms ease;
+}
+
+.school-line.is-highlighted {
+  stroke: #0f766e;
+  stroke-width: 3;
+  opacity: 1;
+}
+
 .dark .layer-provinces-fill path[data-has-schools="true"],
 .dark .layer-cities path[data-has-schools="true"],
 .dark .layer-districts path,
@@ -72,6 +82,10 @@
 
 .dark .school-line {
   stroke: #94a3b8;
+}
+
+.dark .school-line.is-highlighted {
+  stroke: #5eead4;
 }
 
 .dark .school-anchor {
