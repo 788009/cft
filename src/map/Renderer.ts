@@ -52,6 +52,7 @@ export class MapRenderer {
   private pathGenerator: d3.GeoPath;
   private zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private levelManager: LevelManager;
+  private destroyed = false;
   
   private validProvinces = new Set<string>();
   private validCities = new Set<string>();
@@ -100,7 +101,6 @@ export class MapRenderer {
       .on('zoom', (event) => this.handleZoom(event));
 
     this.svg.call(this.zoomBehavior);
-    window.addEventListener('resize', () => this.handleResize());
   }
 
   public setData(data: ProcessedData) {
@@ -123,9 +123,18 @@ export class MapRenderer {
     }
   }
 
-  private handleResize() {
-    const { width, height } = this.container.getBoundingClientRect();
+  public resize(width: number, height: number): void {
+    if (this.destroyed) return;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+  }
+
+  public destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.svg.on('.zoom', null);
+    this.svg.interrupt();
+    this.g.selectAll('*').interrupt();
+    this.svg.remove();
   }
 
   private async fetchGeoJSON(path: string) {
@@ -143,6 +152,7 @@ export class MapRenderer {
         this.fetchGeoJSON('china_provinces.json'),
         this.fetchGeoJSON('10-dash.json')
       ]);
+      if (this.destroyed) return;
 
       const fixedProvincesFeatures = provinces.features.map(rewindFeature);
 

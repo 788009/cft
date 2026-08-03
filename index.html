@@ -9,15 +9,15 @@
   <body class="overflow-hidden bg-gray-50 m-0 p-0 text-gray-800">
     <div id="app" class="relative w-screen h-screen flex">
       <!-- 横屏引导 -->
-      <div id="orientation-guide" class="absolute inset-0 z-50 flex items-center justify-center bg-white hidden">
+      <div id="orientation-guide" data-testid="orientation-guide" aria-live="polite" aria-hidden="true" class="absolute inset-0 z-50 flex items-center justify-center bg-white hidden">
         <p class="text-xl font-medium">请将设备横屏以获得完整体验</p>
       </div>
       
       <!-- 地图容器 -->
-      <div id="map-container" class="absolute inset-0 z-0"></div>
+      <div id="map-container" data-testid="map-container" class="absolute inset-0 z-0"></div>
       
       <!-- UI 容器 -->
-      <div id="ui-container" class="absolute inset-0 z-10 pointer-events-none"></div>
+      <div id="ui-container" data-testid="ui-container" class="absolute inset-0 z-10 pointer-events-none"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
