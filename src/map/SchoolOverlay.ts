@@ -382,6 +382,7 @@ export class SchoolOverlay {
       .append('g')
       .attr('class', 'foreign-schools-panel')
       .attr('opacity', 0)
+      .attr('transform', (scene) => `translate(${scene.rect.x},${scene.rect.y})`)
       .style('pointer-events', 'auto');
     entered.append('rect')
       .attr('class', 'foreign-panel-background')
