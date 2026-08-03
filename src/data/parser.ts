@@ -6,53 +6,113 @@ import type {
     CityAdcodeMap,
     ProcessedData,
 } from '@/types';
+import { csvParseRows } from 'd3';
+
+const REQUIRED_HEADERS: (keyof RawStudent)[] = [
+  'no',
+  'name',
+  'short',
+  'university',
+  'province',
+  'city',
+  'contact',
+  'lat',
+  'lng',
+];
+
+const REQUIRED_VALUES: (keyof RawStudent)[] = [
+  'no',
+  'name',
+  'short',
+  'university',
+  'province',
+  'city',
+];
+
+export class DataValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DataValidationError';
+  }
+}
 
 export function parseCsv(csvText: string): RawStudent[] {
-  const lines = csvText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const rows = csvParseRows(csvText).filter((row) => row.some((value) => value.trim() !== ''));
 
-  if (lines.length === 0) {
+  if (rows.length === 0) {
     return [];
   }
 
-  const headers = lines[0].split(',').map((h) => h.trim());
-  const records: RawStudent[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCsvLine(lines[i]);
-    if (values.length < headers.length) {
-      continue;
-    }
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = values[index] ? values[index].trim() : '';
-    });
-    records.push(record as unknown as RawStudent);
+  const headers = rows[0].map((header, index) => {
+    const trimmed = header.trim();
+    return index === 0 ? trimmed.replace(/^\uFEFF/, '') : trimmed;
+  });
+  const duplicateHeaders = headers.filter((header, index) => headers.indexOf(header) !== index);
+  if (duplicateHeaders.length > 0) {
+    throw new DataValidationError(`CSV 表头重复: ${[...new Set(duplicateHeaders)].join(', ')}`);
   }
 
-  return records;
+  const missingHeaders = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
+  if (missingHeaders.length > 0) {
+    throw new DataValidationError(`CSV 缺少必要表头: ${missingHeaders.join(', ')}`);
+  }
+
+  return rows.slice(1).map((values, index) => {
+    const rowNumber = index + 2;
+    if (values.length !== headers.length) {
+      throw new DataValidationError(
+        `CSV 第 ${rowNumber} 行列数错误: 预期 ${headers.length} 列，实际 ${values.length} 列`,
+      );
+    }
+
+    const valuesByHeader = Object.fromEntries(
+      headers.map((header, valueIndex) => [header, values[valueIndex].trim()]),
+    ) as Record<string, string>;
+
+    const emptyFields = REQUIRED_VALUES.filter((field) => valuesByHeader[field] === '');
+    if (emptyFields.length > 0) {
+      throw new DataValidationError(`CSV 第 ${rowNumber} 行缺少必要字段: ${emptyFields.join(', ')}`);
+    }
+
+    return Object.fromEntries(
+      REQUIRED_HEADERS.map((header) => [header, valuesByHeader[header]]),
+    ) as unknown as RawStudent;
+  });
 }
 
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
+export function parseAdcodeMap(value: unknown, resourceName: string): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new DataValidationError(`${resourceName} 必须是对象`);
+  }
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
+  const entries = Object.entries(value);
+  for (const [name, adcode] of entries) {
+    if (name.trim() === '' || typeof adcode !== 'string' || !/^\d{6}$/.test(adcode)) {
+      throw new DataValidationError(`${resourceName} 包含无效的行政区映射: ${name}`);
     }
   }
-  result.push(current);
-  return result;
+
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
+function parseCoordinate(rawValue: string, field: 'lat' | 'lng', rowNumber: number): number | null {
+  if (rawValue === '') return null;
+
+  const value = Number(rawValue);
+  const minimum = field === 'lat' ? -90 : -180;
+  const maximum = field === 'lat' ? 90 : 180;
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new DataValidationError(`CSV 第 ${rowNumber} 行 ${field} 坐标无效: ${rawValue}`);
+  }
+
+  return value;
+}
+
+function appendIndex(index: Map<string, SchoolGroup[]>, key: string | null, school: SchoolGroup): void {
+  if (!key) return;
+  const schools = index.get(key) ?? [];
+  schools.push(school);
+  index.set(key, schools);
 }
 
 export function processStudentData(
@@ -61,12 +121,20 @@ export function processStudentData(
   cityAdcodeMap: CityAdcodeMap
 ): ProcessedData {
   const students: Student[] = rawStudents.map((raw, index) => {
-    const parsedNo = parseInt(raw.no, 10);
-    const latNum = parseFloat(raw.lat);
-    const lngNum = parseFloat(raw.lng);
+    const rowNumber = index + 2;
+    const parsedNo = Number(raw.no);
+    if (!Number.isInteger(parsedNo)) {
+      throw new DataValidationError(`CSV 第 ${rowNumber} 行 no 必须是整数: ${raw.no}`);
+    }
+
+    const lat = parseCoordinate(raw.lat, 'lat', rowNumber);
+    const lng = parseCoordinate(raw.lng, 'lng', rowNumber);
+    if ((lat === null) !== (lng === null)) {
+      throw new DataValidationError(`CSV 第 ${rowNumber} 行经纬度必须同时填写或同时留空`);
+    }
 
     return {
-      no: isNaN(parsedNo) ? Number.MAX_SAFE_INTEGER : parsedNo,
+      no: parsedNo,
       rawNo: raw.no,
       name: raw.name,
       short: raw.short,
@@ -74,8 +142,8 @@ export function processStudentData(
       province: raw.province,
       city: raw.city,
       contact: raw.contact && raw.contact.trim() !== '' ? raw.contact.trim() : null,
-      lat: isNaN(latNum) ? null : latNum,
-      lng: isNaN(lngNum) ? null : lngNum,
+      lat,
+      lng,
       originalIndex: index,
     };
   });
@@ -102,6 +170,21 @@ export function processStudentData(
     const provinceAdcode = provinceAdcodeMap[sample.province] || null;
     const isForeign = provinceAdcode === null;
 
+    if (!isForeign && (sample.lat === null || sample.lng === null)) {
+      throw new DataValidationError(`国内学校缺少经纬度: ${university}`);
+    }
+
+    for (const student of sortedStudents.slice(1)) {
+      if (
+        student.province !== sample.province ||
+        student.city !== sample.city ||
+        student.lat !== sample.lat ||
+        student.lng !== sample.lng
+      ) {
+        throw new DataValidationError(`同一学校的地区或坐标不一致: ${university}`);
+      }
+    }
+
     let cityAdcode: string | null = null;
     if (!isForeign) {
       cityAdcode = cityAdcodeMap[sample.city] || provinceAdcode;
@@ -122,11 +205,30 @@ export function processStudentData(
 
   const domesticSchools = schools.filter((s) => !s.isForeign);
   const foreignSchools = schools.filter((s) => s.isForeign);
+  const schoolByUniversity = new Map<string, SchoolGroup>();
+  const schoolByStudent = new Map<Student, SchoolGroup>();
+  const schoolsByProvinceAdcode = new Map<string, SchoolGroup[]>();
+  const schoolsByCityAdcode = new Map<string, SchoolGroup[]>();
+
+  for (const school of schools) {
+    schoolByUniversity.set(school.university, school);
+    appendIndex(schoolsByProvinceAdcode, school.provinceAdcode, school);
+    appendIndex(schoolsByCityAdcode, school.cityAdcode, school);
+    for (const student of school.students) {
+      schoolByStudent.set(student, school);
+    }
+  }
 
   return {
     students,
     schools,
     domesticSchools,
     foreignSchools,
+    indexes: {
+      schoolByUniversity,
+      schoolByStudent,
+      schoolsByProvinceAdcode,
+      schoolsByCityAdcode,
+    },
   };
 }

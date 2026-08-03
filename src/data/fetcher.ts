@@ -1,31 +1,32 @@
 import { defaultConfig } from '@/config';
-import { parseCsv, processStudentData } from './parser';
+import { parseAdcodeMap, parseCsv, processStudentData } from './parser';
 import type { ProcessedData, ProvinceAdcodeMap, CityAdcodeMap } from '@/types';
+
+async function fetchRequired(path: string): Promise<Response> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    throw new Error(`数据资源加载失败: ${path} (${response.status})`);
+  }
+  return response;
+}
 
 export async function loadInitialData(): Promise<ProcessedData> {
   const basePath = defaultConfig.dataBasePath;
   const [csvRes, provRes, cityRes] = await Promise.all([
-    fetch(`${basePath}/data.csv`),
-    fetch(`${basePath}/province2adcode.json`),
-    fetch(`${basePath}/cities2adcode.json`)
+    fetchRequired(`${basePath}/data.csv`),
+    fetchRequired(`${basePath}/province2adcode.json`),
+    fetchRequired(`${basePath}/cities2adcode.json`),
   ]);
 
-  if (!csvRes.ok || !provRes.ok || !cityRes.ok) {
-    throw new Error('基础数据加载失败');
-  }
-
   const csvText = await csvRes.text();
-  const provMap = (await provRes.json()) as ProvinceAdcodeMap;
-  const cityMap = (await cityRes.json()) as CityAdcodeMap;
+  const provMap = parseAdcodeMap(await provRes.json(), 'province2adcode.json') as ProvinceAdcodeMap;
+  const cityMap = parseAdcodeMap(await cityRes.json(), 'cities2adcode.json') as CityAdcodeMap;
 
   const raw = parseCsv(csvText);
   return processStudentData(raw, provMap, cityMap);
 }
 
 export async function loadGeoJSON(filename: string): Promise<any> {
-  const res = await fetch(`${defaultConfig.dataBasePath}/geojson/${filename}`);
-  if (!res.ok) {
-    throw new Error(`GeoJSON 文件加载失败: ${filename}`);
-  }
+  const res = await fetchRequired(`${defaultConfig.dataBasePath}/geojson/${filename}`);
   return res.json();
 }

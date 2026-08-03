@@ -44,4 +44,10 @@ export interface ProcessedData {
   schools: SchoolGroup[];
   domesticSchools: SchoolGroup[];
   foreignSchools: SchoolGroup[];
+  indexes: {
+    schoolByUniversity: Map<string, SchoolGroup>;
+    schoolByStudent: Map<Student, SchoolGroup>;
+    schoolsByProvinceAdcode: Map<string, SchoolGroup[]>;
+    schoolsByCityAdcode: Map<string, SchoolGroup[]>;
+  };
 }
