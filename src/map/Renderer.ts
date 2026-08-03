@@ -8,12 +8,19 @@ import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
 import { rewindFeature } from './geo';
 import type { RegionSelection } from '@/details/types';
-import { getRegionLabelIdentity, type RegionLabelLevel } from './RegionLabels';
+import {
+  getRegionAdcodesWithSchools,
+  getRegionFeatureLabelLevel,
+  getRegionLabelIdentity,
+  type RegionLabelLevel,
+} from './RegionLabels';
 
 interface RegionLabelDatum {
   feature: any;
   adcode: string;
   name: string;
+  hasSchools: boolean;
+  level: RegionLabelLevel;
 }
 
 export interface MapRendererOptions {
@@ -22,6 +29,7 @@ export interface MapRendererOptions {
   onStudentSelect?: (student: Student) => void;
   interactionMode?: MapInteractionMode;
   showRegionNames?: boolean;
+  onlyShowRegionNamesWithSchools?: boolean;
 }
 
 export class MapRenderer {
@@ -50,6 +58,8 @@ export class MapRenderer {
   private zoomInteractionChanged = false;
   private interactionMode: MapInteractionMode;
   private showRegionNames: boolean;
+  private onlyShowRegionNamesWithSchools: boolean;
+  private domesticSchools: ProcessedData['domesticSchools'] = [];
   private readonly schoolOverlay: SchoolOverlay;
   private width: number;
   private height: number;
@@ -73,6 +83,8 @@ export class MapRenderer {
     this.onRegionSelect = options.onRegionSelect;
     this.interactionMode = options.interactionMode ?? defaultConfig.mapInteractionMode;
     this.showRegionNames = options.showRegionNames ?? defaultConfig.showRegionNames;
+    this.onlyShowRegionNamesWithSchools = options.onlyShowRegionNamesWithSchools
+      ?? defaultConfig.onlyShowRegionNamesWithSchools;
 
     const { width, height } = this.container.getBoundingClientRect();
     this.width = width;
@@ -120,6 +132,7 @@ export class MapRenderer {
     this.validCities.clear();
     this.provinceNames.clear();
     this.cityNames.clear();
+    this.domesticSchools = data.domesticSchools;
     
     for (const school of data.domesticSchools) {
       if (school.provinceAdcode) this.validProvinces.add(String(school.provinceAdcode));
@@ -138,6 +151,11 @@ export class MapRenderer {
   public setShowRegionNames(show: boolean): void {
     this.showRegionNames = show;
     this.updateRegionLabelVisibility();
+  }
+
+  public setOnlyShowRegionNamesWithSchools(only: boolean): void {
+    this.onlyShowRegionNamesWithSchools = only;
+    this.updateRegionLabelFilter();
   }
 
   private handleZoomStart(): void {
@@ -380,21 +398,33 @@ export class MapRenderer {
     features: any[],
     level: RegionLabelLevel,
   ): void {
+    const adcodesWithSchools = new Map<RegionLabelLevel, Set<string>>([
+      ['city', getRegionAdcodesWithSchools(features, 'city', this.domesticSchools)],
+      ['district', getRegionAdcodesWithSchools(features, 'district', this.domesticSchools)],
+      ['province', getRegionAdcodesWithSchools(features, 'province', this.domesticSchools)],
+    ]);
     const data = features.flatMap((feature): RegionLabelDatum[] => {
-      const identity = getRegionLabelIdentity(feature, level);
-      return identity ? [{ feature, ...identity }] : [];
+      const featureLevel = getRegionFeatureLabelLevel(feature, level);
+      const identity = getRegionLabelIdentity(feature, featureLevel);
+      return identity ? [{
+        feature,
+        ...identity,
+        level: featureLevel,
+        hasSchools: adcodesWithSchools.get(featureLevel)?.has(identity.adcode) ?? false,
+      }] : [];
     });
     layer.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
       .data(data, (datum) => datum.adcode)
       .join('text')
       .attr('class', 'region-name-label')
-      .attr('data-region-label-level', level)
+      .attr('data-region-label-level', (datum) => datum.level)
       .attr('data-region-adcode', (datum) => datum.adcode)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('vector-effect', 'non-scaling-stroke')
       .text((datum) => datum.name);
     this.updateRegionLabelGeometry();
+    this.updateRegionLabelFilter();
     this.updateRegionLabelVisibility();
   }
 
@@ -412,6 +442,13 @@ export class MapRenderer {
   private updateRegionLabelScale(): void {
     this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
       .attr('font-size', defaultConfig.regionLabelFontSize / this.currentTransform.k);
+  }
+
+  private updateRegionLabelFilter(): void {
+    this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
+      .style('display', (datum) => (
+        !this.onlyShowRegionNamesWithSchools || datum.hasSchools ? '' : 'none'
+      ));
   }
 
   private updateRegionLabelVisibility(): void {

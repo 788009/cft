@@ -46,6 +46,7 @@ export interface AppConfig {
   mapInteractionMode: MapInteractionMode;
   themeMode: ThemeMode;
   showRegionNames: boolean;
+  onlyShowRegionNamesWithSchools: boolean;
   regionLabelFontSize: number;
   export: {
     defaultWidth: number;
@@ -105,6 +106,7 @@ export const defaultConfig: AppConfig = {
   mapInteractionMode: 'hide-and-reflow',
   themeMode: 'system',
   showRegionNames: true,
+  onlyShowRegionNamesWithSchools: true,
   regionLabelFontSize: 11,
   export: {
     defaultWidth: 3840,

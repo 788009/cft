@@ -5,7 +5,12 @@ import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
 import { getInfoRectangle, SchoolOverlay } from '@/map/SchoolOverlay';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
-import { getRegionLabelIdentity, type RegionLabelLevel } from '@/map/RegionLabels';
+import {
+  getRegionAdcodesWithSchools,
+  getRegionFeatureLabelLevel,
+  getRegionLabelIdentity,
+  type RegionLabelLevel,
+} from '@/map/RegionLabels';
 
 interface FeatureCollection {
   type: 'FeatureCollection';
@@ -23,15 +28,18 @@ export class RegionDetailRenderer {
   private schools: SchoolGroup[] = [];
   private labelLevel: RegionLabelLevel = 'city';
   private showRegionNames: boolean;
+  private onlyShowRegionNamesWithSchools: boolean;
   private destroyed = false;
 
   constructor(
     container: HTMLElement,
     onStudentSelect?: (student: Student) => void,
     showRegionNames = defaultConfig.showRegionNames,
+    onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
+    this.onlyShowRegionNamesWithSchools = onlyShowRegionNamesWithSchools;
     this.svg = select(container)
       .append('svg')
       .attr('class', 'region-detail-map')
@@ -75,6 +83,12 @@ export class RegionDetailRenderer {
     this.labelsLayer.style('display', show ? '' : 'none');
   }
 
+  public setOnlyShowRegionNamesWithSchools(only: boolean): void {
+    this.onlyShowRegionNamesWithSchools = only;
+    this.labelsLayer.selectAll<SVGTextElement, { hasSchools: boolean }>('text.region-name-label')
+      .style('display', (datum) => !only || datum.hasSchools ? '' : 'none');
+  }
+
   public destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -99,9 +113,25 @@ export class RegionDetailRenderer {
       .attr('stroke', MAP_STYLES.cities.stroke)
       .attr('stroke-width', Math.max(MAP_STYLES.cities.strokeWidth, 0.65))
       .attr('vector-effect', 'non-scaling-stroke');
+    const features = this.featureCollection.features as never[];
+    const cityAdcodesWithSchools = getRegionAdcodesWithSchools(features, 'city', this.schools);
+    const districtAdcodesWithSchools = getRegionAdcodesWithSchools(
+      features,
+      'district',
+      this.schools,
+    );
     const labelData = this.featureCollection.features.flatMap((feature) => {
-      const identity = getRegionLabelIdentity(feature as never, this.labelLevel);
-      return identity ? [{ feature, ...identity }] : [];
+      const featureLevel = getRegionFeatureLabelLevel(feature as never, this.labelLevel);
+      const identity = getRegionLabelIdentity(feature as never, featureLevel);
+      const adcodesWithSchools = featureLevel === 'district'
+        ? districtAdcodesWithSchools
+        : cityAdcodesWithSchools;
+      return identity ? [{
+        feature,
+        ...identity,
+        level: featureLevel,
+        hasSchools: adcodesWithSchools.has(identity.adcode),
+      }] : [];
     });
     this.labelsLayer
       .style('display', this.showRegionNames ? '' : 'none')
@@ -109,7 +139,7 @@ export class RegionDetailRenderer {
       .data(labelData, (datum) => datum.adcode)
       .join('text')
       .attr('class', 'region-name-label')
-      .attr('data-region-label-level', this.labelLevel)
+      .attr('data-region-label-level', (datum) => datum.level)
       .attr('data-region-adcode', (datum) => datum.adcode)
       .attr('x', (datum) => pathGenerator.centroid(datum.feature as never)[0])
       .attr('y', (datum) => pathGenerator.centroid(datum.feature as never)[1])
@@ -117,6 +147,9 @@ export class RegionDetailRenderer {
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
       .attr('vector-effect', 'non-scaling-stroke')
+      .style('display', (datum) => (
+        !this.onlyShowRegionNamesWithSchools || datum.hasSchools ? '' : 'none'
+      ))
       .text((datum) => datum.name);
     this.overlay.update(width, height, projection, zoomIdentity);
   }

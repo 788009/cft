@@ -217,16 +217,32 @@ test('shows region names for the current map level and toggles them from setting
   const map = page.getByTestId('map-container');
   const svg = map.locator('svg');
   const provinceLabels = map.locator('.layer-province-labels text.region-name-label');
+  const visibleLabelCount = (labels: typeof provinceLabels) => labels.evaluateAll((nodes) => (
+    nodes.filter((node) => getComputedStyle(node).display !== 'none').length
+  ));
   await expect(provinceLabels).toHaveCount(34);
   await expect(provinceLabels.filter({ hasText: '陕西省' })).toHaveCount(1);
   await expect(provinceLabels.filter({ hasText: '西安市' })).toHaveCount(0);
   await expect(provinceLabels.first()).toBeVisible();
+  const provinceWithSchoolsCount = await map.locator(
+    '.layer-provinces-fill path.region-actionable',
+  ).count();
+  await expect.poll(() => visibleLabelCount(provinceLabels)).toBe(provinceWithSchoolsCount);
+  expect(provinceWithSchoolsCount).toBeLessThan(await provinceLabels.count());
 
   await page.getByTestId('settings-button').click();
   const toggle = page.getByTestId('region-names-toggle');
+  const filterSetting = page.getByTestId('region-names-school-filter-setting');
+  const filterToggle = page.getByTestId('region-names-school-filter-toggle');
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(filterSetting).toBeVisible();
+  await expect(filterToggle).toHaveAttribute('aria-checked', 'true');
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute('aria-checked', 'false');
+  await expect.poll(() => visibleLabelCount(provinceLabels)).toBe(34);
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(filterSetting).toBeHidden();
   await page.getByTestId('close-settings-dialog').click();
   await expect(provinceLabels.first()).toBeHidden();
 
@@ -238,8 +254,13 @@ test('shows region names for the current map level and toggles them from setting
   await page.getByTestId('close-region-detail-dialog').click();
 
   await page.getByTestId('settings-button').click();
+  await expect(filterSetting).toBeHidden();
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(filterSetting).toBeVisible();
+  await expect(filterToggle).toHaveAttribute('aria-checked', 'false');
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute('aria-checked', 'true');
   await page.getByTestId('close-settings-dialog').click();
   await expect(provinceLabels.first()).toBeVisible();
 
@@ -251,13 +272,16 @@ test('shows region names for the current map level and toggles them from setting
   const cityLabels = map.locator('.layer-city-labels text.region-name-label');
   await expect(cityLabels).not.toHaveCount(0);
   await expect(cityLabels.first()).toBeVisible();
+  await expect.poll(() => visibleLabelCount(cityLabels)).toBeGreaterThan(0);
+  expect(await visibleLabelCount(cityLabels)).toBeLessThan(await cityLabels.count());
   await expect(provinceLabels.first()).toBeHidden();
 
   await page.mouse.wheel(0, -1_200);
   await expect(svg).toHaveAttribute('data-map-level', 'district');
   const districtLabels = map.locator('.layer-district-labels text.region-name-label');
   await expect(districtLabels).not.toHaveCount(0);
-  await expect(districtLabels.first()).toBeVisible();
+  await expect.poll(() => visibleLabelCount(districtLabels)).toBeGreaterThan(0);
+  expect(await visibleLabelCount(districtLabels)).toBeLessThan(await districtLabels.count());
   await expect(cityLabels.first()).toBeHidden();
 });
 

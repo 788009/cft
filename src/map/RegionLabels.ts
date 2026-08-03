@@ -1,4 +1,6 @@
 import provinceNames from '@/assets/data/province-names.json';
+import { geoContains } from 'd3';
+import type { SchoolGroup } from '@/types';
 
 export type RegionLabelLevel = 'province' | 'city' | 'district';
 
@@ -9,6 +11,17 @@ interface RegionFeature {
 export interface RegionLabelIdentity {
   adcode: string;
   name: string;
+}
+
+export function getRegionFeatureLabelLevel(
+  feature: RegionFeature,
+  requestedLevel: RegionLabelLevel,
+): RegionLabelLevel {
+  if (requestedLevel === 'province') return 'province';
+  const featureLevel = feature.properties?.level;
+  return featureLevel === 'city' || featureLevel === 'district'
+    ? featureLevel
+    : requestedLevel;
 }
 
 export function getRegionLabelIdentity(
@@ -30,4 +43,30 @@ export function getRegionLabelIdentity(
   const adcode = String(rawAdcode ?? '');
   const name = typeof properties.name === 'string' ? properties.name.trim() : '';
   return adcode && name ? { adcode, name } : null;
+}
+
+export function getRegionAdcodesWithSchools(
+  features: RegionFeature[],
+  level: RegionLabelLevel,
+  schools: SchoolGroup[],
+): Set<string> {
+  if (level === 'province') {
+    return new Set(schools.flatMap((school) => school.provinceAdcode ?? []));
+  }
+  if (level === 'city') {
+    return new Set(schools.flatMap((school) => school.cityAdcode ?? []));
+  }
+
+  const schoolCoordinates = schools.flatMap((school): [number, number][] => (
+    school.lng === null || school.lat === null ? [] : [[school.lng, school.lat]]
+  ));
+  const adcodes = new Set<string>();
+  for (const feature of features) {
+    const identity = getRegionLabelIdentity(feature, level);
+    if (
+      identity &&
+      schoolCoordinates.some((coordinates) => geoContains(feature as never, coordinates))
+    ) adcodes.add(identity.adcode);
+  }
+  return adcodes;
 }

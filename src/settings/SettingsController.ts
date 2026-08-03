@@ -37,9 +37,11 @@ export class SettingsController {
   private readonly onModeChange: (mode: MapInteractionMode) => void;
   private readonly onThemeModeChange: (mode: ThemeMode) => void;
   private readonly onShowRegionNamesChange: (show: boolean) => void;
+  private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
   private showRegionNames: boolean;
+  private onlyShowRegionNamesWithSchools: boolean;
   private shell: ModalShell | null = null;
 
   constructor(
@@ -47,17 +49,21 @@ export class SettingsController {
     initialMode: MapInteractionMode,
     initialThemeMode: ThemeMode,
     initialShowRegionNames: boolean,
+    initialOnlyShowRegionNamesWithSchools: boolean,
     onModeChange: (mode: MapInteractionMode) => void,
     onThemeModeChange: (mode: ThemeMode) => void,
     onShowRegionNamesChange: (show: boolean) => void,
+    onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
   ) {
     this.container = container;
     this.mode = initialMode;
     this.themeMode = initialThemeMode;
     this.showRegionNames = initialShowRegionNames;
+    this.onlyShowRegionNamesWithSchools = initialOnlyShowRegionNamesWithSchools;
     this.onModeChange = onModeChange;
     this.onThemeModeChange = onThemeModeChange;
     this.onShowRegionNamesChange = onShowRegionNamesChange;
+    this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
@@ -166,31 +172,52 @@ export class SettingsController {
     legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
     legend.textContent = '地图标注';
 
+    const toggle = this.createSwitch(
+      'region-names-toggle',
+      '显示地区名称',
+      () => this.selectShowRegionNames(!this.showRegionNames),
+    );
+    const filterSetting = document.createElement('div');
+    filterSetting.dataset.testid = 'region-names-school-filter-setting';
+    filterSetting.className = 'mt-2 pl-3';
+    filterSetting.append(this.createSwitch(
+      'region-names-school-filter-toggle',
+      '仅显示有大学的地区',
+      () => this.selectOnlyShowRegionNamesWithSchools(!this.onlyShowRegionNamesWithSchools),
+    ));
+    fieldset.append(legend, toggle, filterSetting);
+    return fieldset;
+  }
+
+  private createSwitch(
+    testId: string,
+    labelText: string,
+    onClick: () => void,
+  ): HTMLButtonElement {
     const toggle = document.createElement('button');
     toggle.type = 'button';
-    toggle.dataset.testid = 'region-names-toggle';
+    toggle.dataset.testid = testId;
     toggle.className = [
       'flex min-h-11 w-full items-center justify-between gap-3 rounded-md border px-3 text-sm font-medium',
       'border-slate-300 bg-white text-slate-700 focus-visible:outline-2 focus-visible:outline-teal-700',
       'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:focus-visible:outline-teal-400',
     ].join(' ');
     toggle.setAttribute('role', 'switch');
-    toggle.setAttribute('aria-label', '显示地区名称');
-    toggle.addEventListener('click', () => this.selectShowRegionNames(!this.showRegionNames));
+    toggle.setAttribute('aria-label', labelText);
+    toggle.addEventListener('click', onClick);
 
     const label = document.createElement('span');
-    label.textContent = '显示地区名称';
+    label.textContent = labelText;
     const track = document.createElement('span');
-    track.dataset.toggleTrack = 'region-names';
+    track.dataset.toggleTrack = 'true';
     track.className = 'relative h-6 w-11 shrink-0 rounded-full transition-colors';
     track.setAttribute('aria-hidden', 'true');
     const thumb = document.createElement('span');
-    thumb.dataset.toggleThumb = 'region-names';
+    thumb.dataset.toggleThumb = 'true';
     thumb.className = 'absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform';
     track.append(thumb);
     toggle.append(label, track);
-    fieldset.append(legend, toggle);
-    return fieldset;
+    return toggle;
   }
 
   private selectMode(mode: MapInteractionMode): void {
@@ -214,6 +241,13 @@ export class SettingsController {
     this.onShowRegionNamesChange(show);
   }
 
+  private selectOnlyShowRegionNamesWithSchools(only: boolean): void {
+    if (only === this.onlyShowRegionNamesWithSchools) return;
+    this.onlyShowRegionNamesWithSchools = only;
+    this.updateChoices();
+    this.onOnlyShowRegionNamesWithSchoolsChange(only);
+  }
+
   private updateChoices(): void {
     if (!this.shell) return;
     for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
@@ -232,14 +266,27 @@ export class SettingsController {
       choice.classList.toggle('dark:text-slate-300', !selected);
     }
     const toggle = this.shell.body.querySelector<HTMLButtonElement>('[data-testid="region-names-toggle"]');
-    const track = toggle?.querySelector<HTMLElement>('[data-toggle-track="region-names"]');
-    const thumb = toggle?.querySelector<HTMLElement>('[data-toggle-thumb="region-names"]');
-    toggle?.setAttribute('aria-checked', String(this.showRegionNames));
-    track?.classList.toggle('bg-teal-700', this.showRegionNames);
-    track?.classList.toggle('dark:bg-teal-500', this.showRegionNames);
-    track?.classList.toggle('bg-slate-300', !this.showRegionNames);
-    track?.classList.toggle('dark:bg-slate-700', !this.showRegionNames);
-    thumb?.classList.toggle('translate-x-6', this.showRegionNames);
-    thumb?.classList.toggle('translate-x-1', !this.showRegionNames);
+    const filterSetting = this.shell.body.querySelector<HTMLElement>(
+      '[data-testid="region-names-school-filter-setting"]',
+    );
+    const filterToggle = this.shell.body.querySelector<HTMLButtonElement>(
+      '[data-testid="region-names-school-filter-toggle"]',
+    );
+    this.updateSwitch(toggle, this.showRegionNames);
+    this.updateSwitch(filterToggle, this.onlyShowRegionNamesWithSchools);
+    filterSetting?.classList.toggle('hidden', !this.showRegionNames);
+    filterSetting?.setAttribute('aria-hidden', String(!this.showRegionNames));
+  }
+
+  private updateSwitch(toggle: HTMLButtonElement | null, checked: boolean): void {
+    const track = toggle?.querySelector<HTMLElement>('[data-toggle-track="true"]');
+    const thumb = toggle?.querySelector<HTMLElement>('[data-toggle-thumb="true"]');
+    toggle?.setAttribute('aria-checked', String(checked));
+    track?.classList.toggle('bg-teal-700', checked);
+    track?.classList.toggle('dark:bg-teal-500', checked);
+    track?.classList.toggle('bg-slate-300', !checked);
+    track?.classList.toggle('dark:bg-slate-700', !checked);
+    thumb?.classList.toggle('translate-x-6', checked);
+    thumb?.classList.toggle('translate-x-1', !checked);
   }
 }
