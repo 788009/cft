@@ -45,4 +45,19 @@ describe('Level Manager', () => {
     manager.update(5.6);
     expect(manager.getLevel()).toBe('city');
   });
+
+  it('should jump directly to the district level at a high initial zoom', () => {
+    const manager = new LevelManager();
+    expect(manager.update(7)).toBe('district');
+    expect(manager.update(2)).toBe('province');
+  });
+
+  it('should remain at the finest available level', () => {
+    const manager = new LevelManager();
+    manager.setAvailability({ district: false });
+    expect(manager.update(7)).toBe('city');
+
+    manager.setAvailability({ city: false });
+    expect(manager.update(7)).toBe('province');
+  });
 });

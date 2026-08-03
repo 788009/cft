@@ -4,6 +4,11 @@ import { LevelManager, type MapLevel } from './LevelManager';
 import { loadGeoJSON } from '@/data/fetcher';
 import { MAP_STYLES } from '@/config';
 import type { ProcessedData } from '@/types';
+import type { MapViewState } from '@/state/ViewState';
+
+export interface MapRendererOptions {
+  onViewChange?: (view: MapViewState) => void;
+}
 
 // 计算多边形顶点缠绕面积
 function ringArea(ring: number[][]): number {
@@ -53,12 +58,17 @@ export class MapRenderer {
   private zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private levelManager: LevelManager;
   private destroyed = false;
+  private readonly onViewChange?: (view: MapViewState) => void;
   
   private validProvinces = new Set<string>();
   private validCities = new Set<string>();
   private geoCache = new Map<string, any>();
   
-  private currentRenderedLevel: MapLevel = 'province';
+  private requestedLevel: MapLevel = 'province';
+  private transitionVersion = 0;
+  private citiesRenderPromise: Promise<boolean> | null = null;
+  private districtsRenderPromise: Promise<boolean> | null = null;
+  private currentTransform = d3.zoomIdentity;
 
   private layers: {
     provincesFill: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -68,10 +78,11 @@ export class MapRenderer {
     tendash: d3.Selection<SVGGElement, unknown, null, undefined>;
   };
   
-  constructor(containerId: string) {
+  constructor(containerId: string, options: MapRendererOptions = {}) {
     const el = document.getElementById(containerId);
     if (!el) throw new Error(`找不到容器: ${containerId}`);
     this.container = el;
+    this.onViewChange = options.onViewChange;
 
     const { width, height } = this.container.getBoundingClientRect();
     
@@ -80,6 +91,7 @@ export class MapRenderer {
       .attr('width', '100%')
       .attr('height', '100%')
       .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('data-map-level', 'province')
       .style('display', 'block');
 
     this.g = this.svg.append('g');
@@ -114,23 +126,31 @@ export class MapRenderer {
   }
 
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {
+    if (this.destroyed) return;
+    this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
     const newLevel = this.levelManager.update(event.transform.k);
-    
-    if (newLevel !== this.currentRenderedLevel) {
-      this.currentRenderedLevel = newLevel;
-      this.updateLayerVisibility();
+    this.emitViewChange(newLevel);
+
+    if (newLevel !== this.requestedLevel) {
+      this.requestedLevel = newLevel;
+      const version = ++this.transitionVersion;
+      void this.updateLayerVisibility(newLevel, version);
     }
   }
 
   public resize(width: number, height: number): void {
     if (this.destroyed) return;
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+    this.projection = createProjection(width, height);
+    this.pathGenerator = d3.geoPath().projection(this.projection);
+    this.g.selectAll<SVGPathElement, unknown>('path').attr('d', this.pathGenerator as any);
   }
 
   public destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.transitionVersion += 1;
     this.svg.on('.zoom', null);
     this.svg.interrupt();
     this.g.selectAll('*').interrupt();
@@ -195,15 +215,28 @@ export class MapRenderer {
     }
   }
 
-  private async updateLayerVisibility() {
-    const level = this.currentRenderedLevel;
+  private async updateLayerVisibility(requestedLevel: MapLevel, version: number): Promise<void> {
+    let level = requestedLevel;
 
     if (level === 'city' || level === 'district') {
-      await this.renderCities();
+      const hasCities = await this.renderCities();
+      if (this.destroyed || version !== this.transitionVersion) return;
+      if (!hasCities) {
+        level = this.levelManager.setAvailability({ city: false, district: false });
+      }
     }
     if (level === 'district') {
-      await this.renderDistricts();
+      const hasDistricts = await this.renderDistricts();
+      if (this.destroyed || version !== this.transitionVersion) return;
+      if (!hasDistricts) {
+        level = this.levelManager.setAvailability({ district: false });
+      }
     }
+
+    if (this.destroyed || version !== this.transitionVersion) return;
+    this.requestedLevel = level;
+    this.svg.attr('data-map-level', level);
+    this.emitViewChange(level);
 
     this.layers.cities.transition().duration(250)
       .style('opacity', level === 'city' || level === 'district' ? 1 : 0);
@@ -212,59 +245,75 @@ export class MapRenderer {
       .style('opacity', level === 'district' ? 1 : 0);
   }
 
-  private async renderCities() {
-    if (this.layers.cities.selectAll('path').size() > 0) return;
+  private renderCities(): Promise<boolean> {
+    if (this.layers.cities.selectAll('path').size() > 0) return Promise.resolve(true);
+    if (this.citiesRenderPromise) return this.citiesRenderPromise;
 
-    const features: any[] = [];
-    for (const adcode of Array.from(this.validProvinces)) {
-      try {
-        const data = await this.fetchGeoJSON(`provinces/${adcode}.json`);
-        const fixedFeatures = (data.features || []).map(rewindFeature);
-        features.push(...fixedFeatures);
-      } catch (e) {
-        // 忽略缺失文件
-      }
-    }
+    this.citiesRenderPromise = this.loadDetailFeatures('provinces', this.validProvinces).then((features) => {
+      if (this.destroyed) return false;
 
-    this.layers.cities.selectAll('path')
-      .data(features)
-      .enter()
-      .append('path')
-      .attr('d', (d: any) => this.pathGenerator(d))
-      .attr('fill', (d: any) => {
-        const p = d.properties;
-        const cityAdcode = String(p.city_adcode || p.adcode);
-        return this.validCities.has(cityAdcode) ? '#ffffff' : '#e5e7eb';
-      })
-      .attr('stroke', MAP_STYLES.cities.stroke)
-      .attr('stroke-width', MAP_STYLES.cities.strokeWidth)
-      .attr('vector-effect', 'non-scaling-stroke');
+      this.layers.cities.selectAll('path')
+        .data(features)
+        .enter()
+        .append('path')
+        .attr('d', (d: any) => this.pathGenerator(d))
+        .attr('fill', (d: any) => {
+          const p = d.properties;
+          const cityAdcode = String(p.city_adcode || p.adcode);
+          return this.validCities.has(cityAdcode) ? '#ffffff' : '#e5e7eb';
+        })
+        .attr('stroke', MAP_STYLES.cities.stroke)
+        .attr('stroke-width', MAP_STYLES.cities.strokeWidth)
+        .attr('vector-effect', 'non-scaling-stroke');
+
+      return features.length > 0;
+    });
+
+    return this.citiesRenderPromise;
   }
 
-  private async renderDistricts() {
-    if (this.layers.districts.selectAll('path').size() > 0) return;
+  private renderDistricts(): Promise<boolean> {
+    if (this.layers.districts.selectAll('path').size() > 0) return Promise.resolve(true);
+    if (this.districtsRenderPromise) return this.districtsRenderPromise;
 
-    const features: any[] = [];
-    for (const adcode of Array.from(this.validCities)) {
+    this.districtsRenderPromise = this.loadDetailFeatures('cities', this.validCities).then((features) => {
+      if (this.destroyed) return false;
+
+      this.layers.districts.selectAll('path')
+        .data(features)
+        .enter()
+        .append('path')
+        .attr('d', (d: any) => this.pathGenerator(d))
+        .attr('fill', '#ffffff')
+        .attr('stroke', MAP_STYLES.districts.stroke)
+        .attr('stroke-width', MAP_STYLES.districts.strokeWidth)
+        .attr('vector-effect', 'non-scaling-stroke');
+
+      return features.length > 0;
+    });
+
+    return this.districtsRenderPromise;
+  }
+
+  private async loadDetailFeatures(directory: string, adcodes: Set<string>): Promise<any[]> {
+    const featureGroups = await Promise.all(Array.from(adcodes, async (adcode) => {
       try {
-        const data = await this.fetchGeoJSON(`cities/${adcode}.json`);
-        if (data && data.features) {
-          const fixedFeatures = data.features.map(rewindFeature);
-          features.push(...fixedFeatures);
-        }
-      } catch (e) {
-        // 忽略缺失文件
+        const data = await this.fetchGeoJSON(`${directory}/${adcode}.json`);
+        return (data.features ?? []).map(rewindFeature);
+      } catch {
+        return [];
       }
-    }
+    }));
 
-    this.layers.districts.selectAll('path')
-      .data(features)
-      .enter()
-      .append('path')
-      .attr('d', (d: any) => this.pathGenerator(d))
-      .attr('fill', '#ffffff')
-      .attr('stroke', MAP_STYLES.districts.stroke)
-      .attr('stroke-width', MAP_STYLES.districts.strokeWidth)
-      .attr('vector-effect', 'non-scaling-stroke');
+    return featureGroups.flat();
+  }
+
+  private emitViewChange(level: MapLevel): void {
+    this.onViewChange?.({
+      x: this.currentTransform.x,
+      y: this.currentTransform.y,
+      k: this.currentTransform.k,
+      level,
+    });
   }
 }

@@ -71,7 +71,9 @@ export class AppController {
       const data = await this.getData();
       if (!this.started || version !== this.renderVersion) return;
 
-      const renderer = new MapRenderer('map-container');
+      const renderer = new MapRenderer('map-container', {
+        onViewChange: (view) => this.viewState.updateMap(view),
+      });
       this.renderer = renderer;
       renderer.setData(data);
       await renderer.renderBaseMap();
