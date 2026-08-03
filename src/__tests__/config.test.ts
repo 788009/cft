@@ -15,5 +15,6 @@ describe('App config', () => {
     expect(defaultConfig.settingsButtonCorner).toBe('top-left');
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
+    expect(defaultConfig.showRegionNames).toBe(true);
   });
 });

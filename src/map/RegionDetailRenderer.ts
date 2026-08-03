@@ -5,6 +5,7 @@ import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
 import { getInfoRectangle, SchoolOverlay } from '@/map/SchoolOverlay';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
+import { getRegionLabelIdentity, type RegionLabelLevel } from '@/map/RegionLabels';
 
 interface FeatureCollection {
   type: 'FeatureCollection';
@@ -15,14 +16,22 @@ export class RegionDetailRenderer {
   private readonly container: HTMLElement;
   private readonly svg: Selection<SVGSVGElement, unknown, null, undefined>;
   private readonly geometryLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly overlay: SchoolOverlay;
   private readonly resizeObserver: ResizeObserver;
   private featureCollection: FeatureCollection | null = null;
   private schools: SchoolGroup[] = [];
+  private labelLevel: RegionLabelLevel = 'city';
+  private showRegionNames: boolean;
   private destroyed = false;
 
-  constructor(container: HTMLElement, onStudentSelect?: (student: Student) => void) {
+  constructor(
+    container: HTMLElement,
+    onStudentSelect?: (student: Student) => void,
+    showRegionNames = defaultConfig.showRegionNames,
+  ) {
     this.container = container;
+    this.showRegionNames = showRegionNames;
     this.svg = select(container)
       .append('svg')
       .attr('class', 'region-detail-map')
@@ -31,6 +40,9 @@ export class RegionDetailRenderer {
       .attr('height', '100%')
       .style('display', 'block');
     this.geometryLayer = this.svg.append('g').attr('class', 'region-detail-geometry');
+    this.labelsLayer = this.svg.append('g')
+      .attr('class', 'region-detail-labels')
+      .style('pointer-events', 'none');
     this.overlay = new SchoolOverlay(this.svg, { onStudentSelect });
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
@@ -45,6 +57,7 @@ export class RegionDetailRenderer {
       type: 'FeatureCollection',
       features: (raw.features ?? []).map(rewindFeature),
     };
+    this.labelLevel = selection.level === 'province' ? 'city' : 'district';
     this.schools = selection.level === 'province'
       ? data.indexes.schoolsByProvinceAdcode.get(selection.adcode) ?? []
       : data.indexes.schoolsByCityAdcode.get(selection.adcode) ?? [];
@@ -55,6 +68,11 @@ export class RegionDetailRenderer {
       .attr('data-region-school-count', this.schools.length)
       .attr('aria-label', `${selection.name}地区地图`);
     this.updateScene();
+  }
+
+  public setShowRegionNames(show: boolean): void {
+    this.showRegionNames = show;
+    this.labelsLayer.style('display', show ? '' : 'none');
   }
 
   public destroy(): void {
@@ -81,6 +99,25 @@ export class RegionDetailRenderer {
       .attr('stroke', MAP_STYLES.cities.stroke)
       .attr('stroke-width', Math.max(MAP_STYLES.cities.strokeWidth, 0.65))
       .attr('vector-effect', 'non-scaling-stroke');
+    const labelData = this.featureCollection.features.flatMap((feature) => {
+      const identity = getRegionLabelIdentity(feature as never, this.labelLevel);
+      return identity ? [{ feature, ...identity }] : [];
+    });
+    this.labelsLayer
+      .style('display', this.showRegionNames ? '' : 'none')
+      .selectAll<SVGTextElement, typeof labelData[number]>('text.region-name-label')
+      .data(labelData, (datum) => datum.adcode)
+      .join('text')
+      .attr('class', 'region-name-label')
+      .attr('data-region-label-level', this.labelLevel)
+      .attr('data-region-adcode', (datum) => datum.adcode)
+      .attr('x', (datum) => pathGenerator.centroid(datum.feature as never)[0])
+      .attr('y', (datum) => pathGenerator.centroid(datum.feature as never)[1])
+      .attr('font-size', defaultConfig.regionLabelFontSize)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('vector-effect', 'non-scaling-stroke')
+      .text((datum) => datum.name);
     this.overlay.update(width, height, projection, zoomIdentity);
   }
 

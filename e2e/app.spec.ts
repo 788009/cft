@@ -211,6 +211,56 @@ test('follows the browser color scheme and supports explicit theme settings', as
   await expect(root).toHaveClass(/dark/);
 });
 
+test('shows region names for the current map level and toggles them from settings', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const provinceLabels = map.locator('.layer-province-labels text.region-name-label');
+  await expect(provinceLabels).toHaveCount(34);
+  await expect(provinceLabels.filter({ hasText: '陕西省' })).toHaveCount(1);
+  await expect(provinceLabels.filter({ hasText: '西安市' })).toHaveCount(0);
+  await expect(provinceLabels.first()).toBeVisible();
+
+  await page.getByTestId('settings-button').click();
+  const toggle = page.getByTestId('region-names-toggle');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await page.getByTestId('close-settings-dialog').click();
+  await expect(provinceLabels.first()).toBeHidden();
+
+  const province = map.locator('.layer-provinces-fill path.region-actionable').first();
+  await province.click({ force: true });
+  const detailMap = page.getByTestId('region-detail-map');
+  await expect(detailMap.locator('.region-detail-geometry path')).not.toHaveCount(0);
+  await expect(detailMap.locator('.region-detail-labels')).toBeHidden();
+  await page.getByTestId('close-region-detail-dialog').click();
+
+  await page.getByTestId('settings-button').click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('close-settings-dialog').click();
+  await expect(provinceLabels.first()).toBeVisible();
+
+  const svgBox = await svg.boundingBox();
+  if (!svgBox) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2);
+  await page.mouse.wheel(0, -1_200);
+  await expect(svg).toHaveAttribute('data-map-level', 'city');
+  const cityLabels = map.locator('.layer-city-labels text.region-name-label');
+  await expect(cityLabels).not.toHaveCount(0);
+  await expect(cityLabels.first()).toBeVisible();
+  await expect(provinceLabels.first()).toBeHidden();
+
+  await page.mouse.wheel(0, -1_200);
+  await expect(svg).toHaveAttribute('data-map-level', 'district');
+  const districtLabels = map.locator('.layer-district-labels text.region-name-label');
+  await expect(districtLabels).not.toHaveCount(0);
+  await expect(districtLabels.first()).toBeVisible();
+  await expect(cityLabels.first()).toBeHidden();
+});
+
 test('highlights provinces on hover in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');

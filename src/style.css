@@ -64,6 +64,18 @@
   stroke-width: 2;
 }
 
+.region-name-label {
+  fill: #334155;
+  stroke: rgba(255, 255, 255, 0.88);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  stroke-linejoin: round;
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0;
+  user-select: none;
+}
+
 .dark .layer-provinces-fill path[data-has-schools="true"],
 .dark .layer-cities path[data-has-schools="true"],
 .dark .layer-districts path,
@@ -99,6 +111,11 @@
 
 .dark .school-label.is-highlighted .school-label-background {
   stroke: #5eead4;
+}
+
+.dark .region-name-label {
+  fill: #e2e8f0;
+  stroke: rgba(15, 23, 42, 0.9);
 }
 
 .dark .school-anchor {

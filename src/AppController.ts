@@ -16,6 +16,7 @@ export class AppController {
   private readonly settings: SettingsController;
   private readonly theme: ThemeController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
+  private showRegionNames = defaultConfig.showRegionNames;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
   private renderVersion = 0;
@@ -26,17 +27,23 @@ export class AppController {
     this.mapContainer = this.requireElement('map-container');
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
-    this.details = new DetailController(this.uiContainer);
+    this.details = new DetailController(this.uiContainer, this.showRegionNames);
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.settings = new SettingsController(
       this.uiContainer,
       this.interactionMode,
       defaultConfig.themeMode,
+      this.showRegionNames,
       (mode) => {
         this.interactionMode = mode;
         this.renderer?.setInteractionMode(mode);
       },
       (mode) => this.theme.setMode(mode),
+      (show) => {
+        this.showRegionNames = show;
+        this.renderer?.setShowRegionNames(show);
+        this.details.setShowRegionNames(show);
+      },
     );
   }
 
@@ -101,6 +108,7 @@ export class AppController {
         onRegionSelect: (selection) => this.details.openRegion(selection, data),
         onStudentSelect: (student) => this.details.openPerson(student),
         interactionMode: this.interactionMode,
+        showRegionNames: this.showRegionNames,
       });
       this.renderer = renderer;
       renderer.setData(data);

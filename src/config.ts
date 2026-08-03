@@ -45,6 +45,8 @@ export interface AppConfig {
   settingsButtonCorner: Corner;
   mapInteractionMode: MapInteractionMode;
   themeMode: ThemeMode;
+  showRegionNames: boolean;
+  regionLabelFontSize: number;
   export: {
     defaultWidth: number;
     defaultHeight: number;
@@ -102,6 +104,8 @@ export const defaultConfig: AppConfig = {
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'hide-and-reflow',
   themeMode: 'system',
+  showRegionNames: true,
+  regionLabelFontSize: 11,
   export: {
     defaultWidth: 3840,
     defaultHeight: 2160,

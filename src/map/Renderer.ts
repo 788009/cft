@@ -8,12 +8,20 @@ import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
 import { rewindFeature } from './geo';
 import type { RegionSelection } from '@/details/types';
+import { getRegionLabelIdentity, type RegionLabelLevel } from './RegionLabels';
+
+interface RegionLabelDatum {
+  feature: any;
+  adcode: string;
+  name: string;
+}
 
 export interface MapRendererOptions {
   onViewChange?: (view: MapViewState) => void;
   onRegionSelect?: (selection: RegionSelection) => void;
   onStudentSelect?: (student: Student) => void;
   interactionMode?: MapInteractionMode;
+  showRegionNames?: boolean;
 }
 
 export class MapRenderer {
@@ -41,6 +49,7 @@ export class MapRenderer {
   private currentTransform = d3.zoomIdentity;
   private zoomInteractionChanged = false;
   private interactionMode: MapInteractionMode;
+  private showRegionNames: boolean;
   private readonly schoolOverlay: SchoolOverlay;
   private width: number;
   private height: number;
@@ -51,6 +60,9 @@ export class MapRenderer {
     districts: d3.Selection<SVGGElement, unknown, null, undefined>;
     provincesBorder: d3.Selection<SVGGElement, unknown, null, undefined>;
     tendash: d3.Selection<SVGGElement, unknown, null, undefined>;
+    provinceLabels: d3.Selection<SVGGElement, unknown, null, undefined>;
+    cityLabels: d3.Selection<SVGGElement, unknown, null, undefined>;
+    districtLabels: d3.Selection<SVGGElement, unknown, null, undefined>;
   };
   
   constructor(containerId: string, options: MapRendererOptions = {}) {
@@ -60,6 +72,7 @@ export class MapRenderer {
     this.onViewChange = options.onViewChange;
     this.onRegionSelect = options.onRegionSelect;
     this.interactionMode = options.interactionMode ?? defaultConfig.mapInteractionMode;
+    this.showRegionNames = options.showRegionNames ?? defaultConfig.showRegionNames;
 
     const { width, height } = this.container.getBoundingClientRect();
     this.width = width;
@@ -80,7 +93,10 @@ export class MapRenderer {
       cities: this.g.append('g').attr('class', 'layer-cities').style('opacity', 0).style('pointer-events', 'none'),
       districts: this.g.append('g').attr('class', 'layer-districts').style('opacity', 0).style('pointer-events', 'none'),
       provincesBorder: this.g.append('g').attr('class', 'layer-provinces-border').style('pointer-events', 'none'),
-      tendash: this.g.append('g').attr('class', 'layer-tendash').style('pointer-events', 'none')
+      tendash: this.g.append('g').attr('class', 'layer-tendash').style('pointer-events', 'none'),
+      provinceLabels: this.g.append('g').attr('class', 'layer-province-labels').style('pointer-events', 'none'),
+      cityLabels: this.g.append('g').attr('class', 'layer-city-labels').style('pointer-events', 'none'),
+      districtLabels: this.g.append('g').attr('class', 'layer-district-labels').style('pointer-events', 'none'),
     };
     this.schoolOverlay = new SchoolOverlay(this.svg, {
       onStudentSelect: options.onStudentSelect,
@@ -119,6 +135,11 @@ export class MapRenderer {
     this.interactionMode = mode;
   }
 
+  public setShowRegionNames(show: boolean): void {
+    this.showRegionNames = show;
+    this.updateRegionLabelVisibility();
+  }
+
   private handleZoomStart(): void {
     if (this.destroyed) return;
     this.zoomInteractionChanged = false;
@@ -132,6 +153,7 @@ export class MapRenderer {
     }
     this.currentTransform = event.transform;
     this.g.attr('transform', event.transform.toString());
+    this.updateRegionLabelScale();
     if (this.interactionMode === 'stable') this.updateSchoolOverlay();
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);
@@ -163,6 +185,7 @@ export class MapRenderer {
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);
     this.g.selectAll<SVGPathElement, unknown>('path').attr('d', this.pathGenerator as any);
+    this.updateRegionLabelGeometry();
     this.updateSchoolOverlay();
   }
 
@@ -211,6 +234,7 @@ export class MapRenderer {
         })
         .attr('stroke', 'none');
       this.bindRegionInteractions(this.layers.provincesFill.selectAll('path'), 'province');
+      this.renderRegionLabels(this.layers.provinceLabels, fixedProvincesFeatures, 'province');
 
       // 2. 省级主边界
       this.layers.provincesBorder.selectAll('path')
@@ -269,6 +293,7 @@ export class MapRenderer {
       .style('opacity', level === 'district' ? 1 : 0);
     this.layers.provincesFill.style('pointer-events', level === 'province' ? 'auto' : 'none');
     this.layers.cities.style('pointer-events', level === 'city' ? 'auto' : 'none');
+    this.updateRegionLabelVisibility();
   }
 
   private renderCities(): Promise<boolean> {
@@ -296,6 +321,7 @@ export class MapRenderer {
         .attr('stroke-width', MAP_STYLES.cities.strokeWidth)
         .attr('vector-effect', 'non-scaling-stroke');
       this.bindRegionInteractions(this.layers.cities.selectAll('path'), 'city');
+      this.renderRegionLabels(this.layers.cityLabels, features, 'city');
 
       return features.length > 0;
     });
@@ -319,6 +345,7 @@ export class MapRenderer {
         .attr('stroke', MAP_STYLES.districts.stroke)
         .attr('stroke-width', MAP_STYLES.districts.strokeWidth)
         .attr('vector-effect', 'non-scaling-stroke');
+      this.renderRegionLabels(this.layers.districtLabels, features, 'district');
 
       return features.length > 0;
     });
@@ -346,6 +373,61 @@ export class MapRenderer {
       k: this.currentTransform.k,
       level,
     });
+  }
+
+  private renderRegionLabels(
+    layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+    features: any[],
+    level: RegionLabelLevel,
+  ): void {
+    const data = features.flatMap((feature): RegionLabelDatum[] => {
+      const identity = getRegionLabelIdentity(feature, level);
+      return identity ? [{ feature, ...identity }] : [];
+    });
+    layer.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
+      .data(data, (datum) => datum.adcode)
+      .join('text')
+      .attr('class', 'region-name-label')
+      .attr('data-region-label-level', level)
+      .attr('data-region-adcode', (datum) => datum.adcode)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('vector-effect', 'non-scaling-stroke')
+      .text((datum) => datum.name);
+    this.updateRegionLabelGeometry();
+    this.updateRegionLabelVisibility();
+  }
+
+  private updateRegionLabelGeometry(): void {
+    this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
+      .attr('x', (datum) => this.pathGenerator.centroid(datum.feature)[0])
+      .attr('y', (datum) => this.pathGenerator.centroid(datum.feature)[1])
+      .attr('font-size', defaultConfig.regionLabelFontSize / this.currentTransform.k)
+      .style('visibility', (datum) => {
+        const [x, y] = this.pathGenerator.centroid(datum.feature);
+        return Number.isFinite(x) && Number.isFinite(y) ? null : 'hidden';
+      });
+  }
+
+  private updateRegionLabelScale(): void {
+    this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
+      .attr('font-size', defaultConfig.regionLabelFontSize / this.currentTransform.k);
+  }
+
+  private updateRegionLabelVisibility(): void {
+    const level = this.requestedLevel;
+    this.layers.provinceLabels.style(
+      'display',
+      this.showRegionNames && level === 'province' ? '' : 'none',
+    );
+    this.layers.cityLabels.style(
+      'display',
+      this.showRegionNames && level === 'city' ? '' : 'none',
+    );
+    this.layers.districtLabels.style(
+      'display',
+      this.showRegionNames && level === 'district' ? '' : 'none',
+    );
   }
 
   private bindRegionInteractions(

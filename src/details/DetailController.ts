@@ -10,9 +10,16 @@ export class DetailController {
   private regionRenderer: RegionDetailRenderer | null = null;
   private personShell: ModalShell | null = null;
   private openVersion = 0;
+  private showRegionNames: boolean;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, showRegionNames: boolean) {
     this.container = container;
+    this.showRegionNames = showRegionNames;
+  }
+
+  public setShowRegionNames(show: boolean): void {
+    this.showRegionNames = show;
+    this.regionRenderer?.setShowRegionNames(show);
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
@@ -36,6 +43,7 @@ export class DetailController {
     this.regionRenderer = new RegionDetailRenderer(
       this.regionShell.body,
       (student) => this.openPerson(student),
+      this.showRegionNames,
     );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;
