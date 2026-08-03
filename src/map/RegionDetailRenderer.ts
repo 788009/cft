@@ -4,7 +4,7 @@ import { loadGeoJSON } from '@/data/fetcher';
 import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
 import { getInfoRectangle, SchoolOverlay } from '@/map/SchoolOverlay';
-import type { ProcessedData, SchoolGroup } from '@/types';
+import type { ProcessedData, SchoolGroup, Student } from '@/types';
 
 interface FeatureCollection {
   type: 'FeatureCollection';
@@ -21,7 +21,7 @@ export class RegionDetailRenderer {
   private schools: SchoolGroup[] = [];
   private destroyed = false;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, onStudentSelect?: (student: Student) => void) {
     this.container = container;
     this.svg = select(container)
       .append('svg')
@@ -31,7 +31,7 @@ export class RegionDetailRenderer {
       .attr('height', '100%')
       .style('display', 'block');
     this.geometryLayer = this.svg.append('g').attr('class', 'region-detail-geometry');
-    this.overlay = new SchoolOverlay(this.svg);
+    this.overlay = new SchoolOverlay(this.svg, { onStudentSelect });
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
   }

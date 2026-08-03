@@ -274,3 +274,60 @@ test('opens city details at city level and does not drill down from districts', 
   });
   await expect(dialog).toHaveCount(0);
 });
+
+test('shows personal details, omits an empty contact row and restores focus', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const studentsWithoutContact = map.locator(
+    'g.school-label text.student-name[data-has-contact="false"]',
+  );
+  await expect(studentsWithoutContact).not.toHaveCount(0);
+  const student = studentsWithoutContact.first();
+  await student.click({ force: true });
+
+  const dialog = page.getByTestId('person-detail-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId('person-university-row')).toBeVisible();
+  await expect(page.getByTestId('person-province-row')).toBeVisible();
+  await expect(page.getByTestId('person-city-row')).toBeVisible();
+  await expect(page.getByTestId('person-contact-row')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(student).toBeFocused();
+});
+
+test('opens personal details from region and foreign school scenes', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const provincePaths = map.locator('.layer-provinces-fill path.region-actionable');
+  await expect(provincePaths).not.toHaveCount(0);
+  await provincePaths.first().click({ force: true });
+
+  const regionDialog = page.getByTestId('region-detail-dialog');
+  const regionStudent = page.getByTestId('region-detail-map').locator('text.student-name').first();
+  await expect(regionStudent).toBeVisible();
+  await regionStudent.press('Enter');
+  const personDialog = page.getByTestId('person-detail-dialog');
+  await expect(personDialog).toBeVisible();
+  await expect(regionDialog).toHaveAttribute('aria-hidden', 'true');
+
+  await page.keyboard.press('Escape');
+  await expect(personDialog).toHaveCount(0);
+  await expect(regionDialog).toBeVisible();
+  await expect(regionDialog).not.toHaveAttribute('aria-hidden', 'true');
+  await expect(regionStudent).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(regionDialog).toHaveCount(0);
+
+  await centerDomesticSchools(page);
+  const foreignStudent = map.locator('g.foreign-schools-panel text.student-name').first();
+  await expect(foreignStudent).toBeVisible();
+  await foreignStudent.click({ force: true });
+  await expect(personDialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(personDialog).toHaveCount(0);
+  await expect(foreignStudent).toBeFocused();
+});

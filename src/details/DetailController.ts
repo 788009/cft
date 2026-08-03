@@ -1,12 +1,14 @@
-import type { ProcessedData } from '@/types';
+import type { ProcessedData, Student } from '@/types';
 import type { RegionSelection } from './types';
 import { ModalShell } from './ModalShell';
 import { RegionDetailRenderer } from '@/map/RegionDetailRenderer';
+import { getPersonDetailRows } from './person';
 
 export class DetailController {
   private readonly container: HTMLElement;
   private regionShell: ModalShell | null = null;
   private regionRenderer: RegionDetailRenderer | null = null;
+  private personShell: ModalShell | null = null;
   private openVersion = 0;
 
   constructor(container: HTMLElement) {
@@ -14,6 +16,7 @@ export class DetailController {
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
+    this.closePerson();
     this.closeRegion();
     const version = ++this.openVersion;
     const downloadButton = document.createElement('button');
@@ -30,7 +33,10 @@ export class DetailController {
       actions: [downloadButton],
       onClose: () => this.closeRegion(),
     });
-    this.regionRenderer = new RegionDetailRenderer(this.regionShell.body);
+    this.regionRenderer = new RegionDetailRenderer(
+      this.regionShell.body,
+      (student) => this.openPerson(student),
+    );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;
       console.error('地区详情加载失败:', error);
@@ -41,15 +47,63 @@ export class DetailController {
     });
   }
 
+  public openPerson(student: Student): void {
+    this.closePerson();
+    this.personShell = new ModalShell(this.container, {
+      testId: 'person-detail-dialog',
+      title: student.name,
+      closeLabel: '关闭个人详情',
+      layerClass: 'z-40',
+      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,430px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl',
+      bodyClass: 'overflow-auto bg-white p-4',
+      onClose: () => this.closePerson(),
+    });
+    this.regionShell?.root.setAttribute('aria-hidden', 'true');
+    if (this.regionShell) this.regionShell.root.inert = true;
+
+    const details = document.createElement('dl');
+    details.className = 'divide-y divide-slate-100 text-sm';
+    for (const row of getPersonDetailRows(student)) {
+      details.append(this.createPersonRow(row.label, row.value, `person-${row.key}`));
+    }
+    this.personShell.body.append(details);
+  }
+
   public closeAll(): void {
+    this.closePerson();
     this.closeRegion();
   }
 
   private closeRegion(): void {
+    this.closePerson();
     this.openVersion += 1;
     this.regionRenderer?.destroy();
     this.regionRenderer = null;
     this.regionShell?.destroy();
     this.regionShell = null;
+  }
+
+  private closePerson(): void {
+    if (this.regionShell) {
+      this.regionShell.root.inert = false;
+      this.regionShell.root.removeAttribute('aria-hidden');
+    }
+    this.personShell?.destroy();
+    this.personShell = null;
+  }
+
+  private createPersonRow(label: string, value: string, testId: string): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-3 first:pt-0 last:pb-0';
+    row.dataset.testid = `${testId}-row`;
+    const term = document.createElement('dt');
+    term.className = 'text-slate-500';
+    term.textContent = label;
+    const description = document.createElement('dd');
+    description.className = 'min-w-0 break-words font-medium text-slate-900';
+    description.dataset.testid = testId;
+    description.textContent = value;
+    row.append(term, description);
+    return row;
   }
 }

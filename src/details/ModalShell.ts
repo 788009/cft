@@ -5,6 +5,8 @@ interface ModalShellOptions {
   onClose: () => void;
   actions?: HTMLElement[];
   layerClass?: string;
+  panelClass?: string;
+  bodyClass?: string;
 }
 
 function createElement<K extends keyof HTMLElementTagNameMap>(
@@ -19,11 +21,14 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
 export class ModalShell {
   public readonly root: HTMLDivElement;
   public readonly body: HTMLDivElement;
-  private readonly previousFocus: HTMLElement | null;
+  private readonly previousFocus: (Element & { focus: () => void }) | null;
   private readonly onClose: () => void;
 
   constructor(container: HTMLElement, options: ModalShellOptions) {
-    this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const activeElement = document.activeElement;
+    this.previousFocus = activeElement && 'focus' in activeElement && typeof activeElement.focus === 'function'
+      ? activeElement as Element & { focus: () => void }
+      : null;
     this.onClose = options.onClose;
 
     this.root = createElement(
@@ -40,7 +45,7 @@ export class ModalShell {
 
     const panel = createElement(
       'section',
-      'relative flex h-[min(90vh,760px)] w-[min(94vw,1120px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl',
+      options.panelClass ?? 'relative flex h-[min(90vh,760px)] w-[min(94vw,1120px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl',
     );
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
@@ -67,7 +72,7 @@ export class ModalShell {
     closeButton.addEventListener('click', this.onClose);
     header.append(closeButton);
 
-    this.body = createElement('div', 'relative min-h-0 flex-1 bg-slate-50');
+    this.body = createElement('div', options.bodyClass ?? 'relative min-h-0 flex-1 bg-slate-50');
     panel.append(header, this.body);
     this.root.append(backdrop, panel);
     this.root.addEventListener('keydown', this.handleKeyDown);

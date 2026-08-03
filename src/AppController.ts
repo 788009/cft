@@ -79,6 +79,7 @@ export class AppController {
       const renderer = new MapRenderer('map-container', {
         onViewChange: (view) => this.viewState.updateMap(view),
         onRegionSelect: (selection) => this.details.openRegion(selection, data),
+        onStudentSelect: (student) => this.details.openPerson(student),
       });
       this.renderer = renderer;
       renderer.setData(data);

@@ -28,6 +28,10 @@ interface ForeignPanelScene {
   schools: SchoolGroup[];
 }
 
+export interface SchoolOverlayOptions {
+  onStudentSelect?: (student: Student) => void;
+}
+
 function textWidth(text: string, fontSize: number): number {
   return Array.from(text).reduce((width, character) => (
     width + (/^[\x00-\x7F]$/.test(character) ? fontSize * 0.6 : fontSize)
@@ -106,8 +110,13 @@ export class SchoolOverlay {
   private domesticSchools: SchoolGroup[] = [];
   private foreignSchools: SchoolGroup[] = [];
   private readonly positionHistory = new Map<string, Rect>();
+  private readonly onStudentSelect?: (student: Student) => void;
 
-  constructor(svg: Selection<SVGSVGElement, unknown, null, undefined>) {
+  constructor(
+    svg: Selection<SVGSVGElement, unknown, null, undefined>,
+    options: SchoolOverlayOptions = {},
+  ) {
+    this.onStudentSelect = options.onStudentSelect;
     this.root = svg.append('g')
       .attr('class', 'school-overlay')
       .attr('data-label-spacing', defaultConfig.labelSpacing)
@@ -279,6 +288,7 @@ export class SchoolOverlay {
 
   private renderLabels(scenes: LabelScene[]): void {
     const style = defaultConfig.labelStyle;
+    const onStudentSelect = this.onStudentSelect;
     const labels = this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
       .data(scenes, (scene) => scene.id);
     const entered = labels.enter()
@@ -331,6 +341,19 @@ export class SchoolOverlay {
           style.paddingY + style.lineHeight * (Math.floor(index / style.studentsPerRow) + 2)
         ))
         .attr('data-student-index', (student) => student.originalIndex)
+        .attr('data-has-contact', (student) => String(student.contact !== null))
+        .attr('role', 'button')
+        .attr('tabindex', 0)
+        .attr('aria-label', (student) => `查看${student.name}详情`)
+        .on('click', (event: MouseEvent, student) => {
+          (event.currentTarget as SVGTextElement).focus();
+          onStudentSelect?.(student);
+        })
+        .on('keydown', (event: KeyboardEvent, student) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onStudentSelect?.(student);
+        })
         .text((student) => student.name);
       studentLabels.exit().remove();
     });
@@ -351,6 +374,7 @@ export class SchoolOverlay {
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {
     const style = defaultConfig.labelStyle;
+    const onStudentSelect = this.onStudentSelect;
     const panels = this.foreignLayer.selectAll<SVGGElement, ForeignPanelScene>('g.foreign-schools-panel')
       .data(scene ? [scene] : []);
     const entered = panels.enter()
@@ -418,6 +442,19 @@ export class SchoolOverlay {
             style.lineHeight * (Math.floor(index / style.studentsPerRow) + 2)
           ))
           .attr('data-student-index', (student) => student.originalIndex)
+          .attr('data-has-contact', (student) => String(student.contact !== null))
+          .attr('role', 'button')
+          .attr('tabindex', 0)
+          .attr('aria-label', (student) => `查看${student.name}详情`)
+          .on('click', (event: MouseEvent, student) => {
+            (event.currentTarget as SVGTextElement).focus();
+            onStudentSelect?.(student);
+          })
+          .on('keydown', (event: KeyboardEvent, student) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            onStudentSelect?.(student);
+          })
           .text((student) => student.name);
         students.exit().remove();
       });

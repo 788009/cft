@@ -3,7 +3,7 @@ import { createProjection } from './projection';
 import { LevelManager, type MapLevel } from './LevelManager';
 import { loadGeoJSON } from '@/data/fetcher';
 import { MAP_STYLES } from '@/config';
-import type { ProcessedData } from '@/types';
+import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
 import { rewindFeature } from './geo';
@@ -12,6 +12,7 @@ import type { RegionSelection } from '@/details/types';
 export interface MapRendererOptions {
   onViewChange?: (view: MapViewState) => void;
   onRegionSelect?: (selection: RegionSelection) => void;
+  onStudentSelect?: (student: Student) => void;
 }
 
 export class MapRenderer {
@@ -77,7 +78,9 @@ export class MapRenderer {
       provincesBorder: this.g.append('g').attr('class', 'layer-provinces-border').style('pointer-events', 'none'),
       tendash: this.g.append('g').attr('class', 'layer-tendash').style('pointer-events', 'none')
     };
-    this.schoolOverlay = new SchoolOverlay(this.svg);
+    this.schoolOverlay = new SchoolOverlay(this.svg, {
+      onStudentSelect: options.onStudentSelect,
+    });
 
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);

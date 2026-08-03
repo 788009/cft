@@ -10,6 +10,16 @@
   cursor: pointer;
 }
 
+.student-name:hover,
+.student-name:focus-visible {
+  fill: #0f766e;
+  text-decoration: underline;
+}
+
+.student-name:focus-visible {
+  outline: none;
+}
+
 .region-actionable {
   cursor: pointer;
   transition: fill 120ms ease;
