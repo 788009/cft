@@ -25,6 +25,10 @@ export interface AppConfig {
     min: number;
     step: number;
   };
+  lineFan: {
+    sharedAnchorTolerance: number;
+    minimumAngleDegrees: number;
+  };
   labelStyle: {
     minWidth: number;
     maxWidth: number;
@@ -52,6 +56,7 @@ export interface AppConfig {
     outOfBounds: number;
     anchorOcclusion: number;
     directionAlignment: number;
+    lineCrowding: number;
     lineIntersection: number;
     lineOcclusion: number;
     infoEdgeDistance: number;
@@ -105,6 +110,10 @@ export const defaultConfig: AppConfig = {
     min: 0.5,
     step: 0.1,
   },
+  lineFan: {
+    sharedAnchorTolerance: 2,
+    minimumAngleDegrees: 8,
+  },
   labelStyle: {
     minWidth: 80,
     maxWidth: 224,
@@ -132,8 +141,9 @@ export const defaultConfig: AppConfig = {
     outOfBounds: 5000,
     anchorOcclusion: 20,
     directionAlignment: 50,
+    lineCrowding: 20,
     lineIntersection: 3,
-    lineOcclusion: 3,
+    lineOcclusion: 30,
     infoEdgeDistance: 10,
     distance: 100,
     stability: 10,

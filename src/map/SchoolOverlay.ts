@@ -488,6 +488,7 @@ export class SchoolOverlay {
           infoRect,
           obstacles: scene ? [scene.rect] : [],
           spacing: defaultConfig.labelSpacing,
+          lineFan: defaultConfig.lineFan,
           weights: defaultConfig.layoutWeights,
         };
       },

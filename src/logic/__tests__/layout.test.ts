@@ -8,6 +8,7 @@ import {
   getConnectionPointCandidates,
   getDistanceCost,
   getDirectionAlignmentCost,
+  getSharedAnchorLineCrowdingCost,
   doesSegmentIntersectRectInterior,
   getDistanceToRectBoundary,
   isOverlap,
@@ -24,11 +25,16 @@ describe('Layout Logic', () => {
     infoRect: { x: 250, y: 250, width: 500, height: 500 },
     obstacles: [],
     spacing: 10,
+    lineFan: {
+      sharedAnchorTolerance: 2,
+      minimumAngleDegrees: 8,
+    },
     weights: {
       overlap: 10000,
       outOfBounds: 5000,
       anchorOcclusion: 2000,
       directionAlignment: 50,
+      lineCrowding: 20,
       lineIntersection: 1000,
       lineOcclusion: 4000,
       infoEdgeDistance: 20,
@@ -76,6 +82,57 @@ describe('Layout Logic', () => {
     // 在 Canvas 内
     expect(isInside(rect1, config.canvasRect)).toBe(true);
     expect(isInside(rect2, config.canvasRect)).toBe(true);
+  });
+
+  it('penalizes lines from the same anchor when their angle is too small', () => {
+    const line = { start: { x: 100, y: 0 }, end: { x: 0, y: 0 } };
+    const sameDirection = { start: { x: 200, y: 0 }, end: { x: 0, y: 0 } };
+    const sufficientlySeparated = {
+      start: { x: 100, y: 20 },
+      end: { x: 0, y: 0 },
+    };
+    const differentAnchor = {
+      start: { x: 200, y: 0 },
+      end: { x: 3, y: 0 },
+    };
+
+    expect(getSharedAnchorLineCrowdingCost(line, [sameDirection], 20, config.lineFan)).toBe(20);
+    expect(getSharedAnchorLineCrowdingCost(line, [sufficientlySeparated], 20, config.lineFan)).toBe(0);
+    expect(getSharedAnchorLineCrowdingCost(line, [differentAnchor], 20, config.lineFan)).toBe(0);
+    expect(getSharedAnchorLineCrowdingCost(line, [sameDirection], 0, config.lineFan)).toBe(0);
+  });
+
+  it('fans cards sharing an anchor into distinct connection directions', () => {
+    const items: LayoutInput[] = [
+      { id: 'first', anchor: { x: 500, y: 500 }, width: 120, height: 60 },
+      { id: 'second', anchor: { x: 500, y: 500 }, width: 120, height: 60 },
+      { id: 'third', anchor: { x: 500, y: 500 }, width: 120, height: 60 },
+    ];
+    const result = calculateFittingLayout(items, new Map(), {
+      minScale: 1,
+      scaleStep: 0.1,
+      optimize: true,
+      getConfig: () => ({
+        ...config,
+        weights: {
+          ...config.weights,
+          lineIntersection: 0,
+          lineOcclusion: 0,
+          lineCrowding: 100,
+        },
+      }),
+    });
+    const angles = items.map((item) => {
+      const start = result.connections.get(item.id)!;
+      return Math.atan2(start.y - item.anchor.y, start.x - item.anchor.x);
+    }).sort((left, right) => left - right);
+    const smallestSeparation = Math.min(
+      angles[1] - angles[0],
+      angles[2] - angles[1],
+    ) * 180 / Math.PI;
+
+    expect(result.score.lineCrowdingCost).toBe(0);
+    expect(smallestSeparation).toBeGreaterThanOrEqual(config.lineFan.minimumAngleDegrees);
   });
 
   it('should keep existing items stable and not push them', () => {

@@ -22,11 +22,16 @@ export interface LayoutConfig {
   infoRect: Rect;
   obstacles: Rect[];
   spacing: number;
+  lineFan: {
+    sharedAnchorTolerance: number;
+    minimumAngleDegrees: number;
+  };
   weights: {
     overlap: number;
     outOfBounds: number;
     anchorOcclusion: number;
     directionAlignment: number;
+    lineCrowding: number;
     lineIntersection: number;
     lineOcclusion: number;
     infoEdgeDistance: number;
@@ -49,6 +54,7 @@ export interface LayoutScore {
   hardViolations: number;
   lineOcclusions: number;
   lineIntersections: number;
+  lineCrowdingCost: number;
   anchorOcclusions: number;
   directionCost: number;
   stabilityCost: number;
@@ -60,6 +66,7 @@ export interface CardConflictDiagnostic {
   lineOcclusions: number;
   coveredLines: number;
   lineIntersections: number;
+  lineCrowdingCost: number;
   anchorOcclusions: number;
   directionCost: number;
   relatedIds: Set<string>;
@@ -283,6 +290,37 @@ export function getDirectionAlignmentCost(
   return (1 - cosine) / 2 * weight;
 }
 
+export function getSharedAnchorLineCrowdingCost(
+  line: ConnectionLine,
+  otherLines: ConnectionLine[],
+  weight: number,
+  lineFan: LayoutConfig['lineFan'],
+): number {
+  if (weight === 0) return 0;
+  const minimumAngle = lineFan.minimumAngleDegrees * Math.PI / 180;
+  if (minimumAngle <= 0) return 0;
+  const lineX = line.start.x - line.end.x;
+  const lineY = line.start.y - line.end.y;
+  const lineLength = Math.hypot(lineX, lineY);
+  if (lineLength === 0) return 0;
+  let cost = 0;
+  for (const other of otherLines) {
+    if (Math.hypot(other.end.x - line.end.x, other.end.y - line.end.y) >
+      lineFan.sharedAnchorTolerance) continue;
+    const otherX = other.start.x - other.end.x;
+    const otherY = other.start.y - other.end.y;
+    const otherLength = Math.hypot(otherX, otherY);
+    if (otherLength === 0) continue;
+    const cosine = Math.max(-1, Math.min(1, (
+      lineX * otherX + lineY * otherY
+    ) / (lineLength * otherLength)));
+    const angle = Math.acos(cosine);
+    if (angle >= minimumAngle) continue;
+    cost += (1 - angle / minimumAngle) * weight;
+  }
+  return cost;
+}
+
 export function getBestConnectionPoint(
   anchor: Point,
   rect: Rect,
@@ -290,10 +328,11 @@ export function getBestConnectionPoint(
   lines: ConnectionLine[],
   weights: Pick<
     LayoutConfig['weights'],
-    'distance' | 'lineIntersection' | 'lineOcclusion' | 'infoEdgeDistance'
+    'distance' | 'lineCrowding' | 'lineIntersection' | 'lineOcclusion' | 'infoEdgeDistance'
   >,
   infoRect?: Rect,
   canvasRect?: Rect,
+  lineFan?: LayoutConfig['lineFan'],
 ): Point {
   const candidates = getConnectionPointCandidates(anchor, rect);
   let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
@@ -315,10 +354,18 @@ export function getBestConnectionPoint(
       : obstacles.filter((obstacle) => (
         doesSegmentIntersectRectInterior(anchor, point, obstacle)
       )).length;
+    const crowding = weights.lineCrowding === 0 || !lineFan
+      ? 0
+      : getSharedAnchorLineCrowdingCost(
+        { start: point, end: anchor },
+        lines,
+        weights.lineCrowding,
+        lineFan,
+      );
     const cost = (weights.distance === 0
       ? 0
       : getDistanceCost(anchor, point, weights.distance, distanceNormalization)) +
-      intersections * weights.lineIntersection + occlusions * weights.lineOcclusion +
+      crowding + intersections * weights.lineIntersection + occlusions * weights.lineOcclusion +
       (infoRect && weights.infoEdgeDistance !== 0
         ? getLinearDistanceCost(
           getDistanceToRectBoundary(point, infoRect),
@@ -388,10 +435,11 @@ function softCost(
     item.anchor,
     rect,
     config.weights.lineOcclusion === 0 ? [] : [...placedRects, ...config.obstacles],
-    config.weights.lineIntersection === 0 ? [] : lines,
+    config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0 ? [] : lines,
     config.weights,
     config.infoRect,
     config.canvasRect,
+    config.lineFan,
   );
   const canvasDiagonal = config.weights.distance !== 0 || config.weights.stability !== 0
     ? getRectDiagonal(config.canvasRect)
@@ -414,6 +462,12 @@ function softCost(
     rect,
     config.infoRect,
     config.weights.directionAlignment,
+  );
+  cost += getSharedAnchorLineCrowdingCost(
+    { start: connection, end: item.anchor },
+    lines,
+    config.weights.lineCrowding,
+    config.lineFan,
   );
 
   if (previousRect && config.weights.stability !== 0) {
@@ -519,10 +573,11 @@ export function calculateLayout(
         config.weights.lineOcclusion === 0
           ? []
           : [...placedRects.slice(0, -1), ...config.obstacles],
-        config.weights.lineIntersection === 0 ? [] : lines,
+        config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0 ? [] : lines,
         config.weights,
         config.infoRect,
         config.canvasRect,
+        config.lineFan,
       );
       lines.push({
         start: connection,
@@ -539,6 +594,7 @@ function compareLayoutScores(left: LayoutScore, right: LayoutScore): number {
     left.hardViolations,
     left.lineOcclusions,
     left.lineIntersections,
+    left.lineCrowdingCost,
     left.anchorOcclusions,
     left.directionCost,
     left.stabilityCost,
@@ -548,6 +604,7 @@ function compareLayoutScores(left: LayoutScore, right: LayoutScore): number {
     right.hardViolations,
     right.lineOcclusions,
     right.lineIntersections,
+    right.lineCrowdingCost,
     right.anchorOcclusions,
     right.directionCost,
     right.stabilityCost,
@@ -607,7 +664,9 @@ function reselectConnections(
     connections.set(item.id, initial?.get(item.id) ?? getConnectionPoint(item.anchor, rect));
   }
 
-  const passCount = config.weights.lineIntersection === 0 ? 1 : 2;
+  const passCount = config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0
+    ? 1
+    : 2;
   for (let pass = 0; pass < passCount; pass += 1) {
     for (const item of items) {
       if (affectedIds && !affectedIds.has(item.id)) continue;
@@ -623,7 +682,7 @@ function reselectConnections(
           }),
           ...config.obstacles,
         ];
-      const lines = config.weights.lineIntersection === 0
+      const lines = config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0
         ? []
         : getConnectionLines(items, connections)
           .filter((line) => line.id !== item.id)
@@ -636,6 +695,7 @@ function reselectConnections(
         config.weights,
         config.infoRect,
         config.canvasRect,
+        config.lineFan,
       ));
     }
   }
@@ -654,6 +714,7 @@ export function evaluateLayout(
     lineOcclusions: 0,
     coveredLines: 0,
     lineIntersections: 0,
+    lineCrowdingCost: 0,
     anchorOcclusions: 0,
     directionCost: 0,
     relatedIds: new Set<string>(),
@@ -662,6 +723,7 @@ export function evaluateLayout(
     hardViolations: countHardViolations(items, layout, config),
     lineOcclusions: 0,
     lineIntersections: 0,
+    lineCrowdingCost: 0,
     anchorOcclusions: 0,
     directionCost: 0,
     stabilityCost: 0,
@@ -711,6 +773,27 @@ export function evaluateLayout(
     }
   }
 
+  if (config.weights.lineCrowding !== 0) {
+    for (let index = 0; index < lines.length; index += 1) {
+      for (let otherIndex = index + 1; otherIndex < lines.length; otherIndex += 1) {
+        const line = lines[index];
+        const other = lines[otherIndex];
+        const crowdingCost = getSharedAnchorLineCrowdingCost(
+          line,
+          [other],
+          config.weights.lineCrowding,
+          config.lineFan,
+        );
+        if (crowdingCost === 0) continue;
+        score.lineCrowdingCost += crowdingCost;
+        diagnostics.get(line.id)!.lineCrowdingCost += crowdingCost;
+        diagnostics.get(other.id)!.lineCrowdingCost += crowdingCost;
+        diagnostics.get(line.id)!.relatedIds.add(other.id);
+        diagnostics.get(other.id)!.relatedIds.add(line.id);
+      }
+    }
+  }
+
   for (const item of items) {
     const rect = layout.get(item.id);
     if (!rect) continue;
@@ -747,7 +830,8 @@ export function evaluateLayout(
 
 function diagnosticSeverity(diagnostic: CardConflictDiagnostic): number {
   return diagnostic.lineOcclusions + diagnostic.coveredLines +
-    diagnostic.lineIntersections + diagnostic.anchorOcclusions + diagnostic.directionCost;
+    diagnostic.lineIntersections + diagnostic.lineCrowdingCost +
+    diagnostic.anchorOcclusions + diagnostic.directionCost;
 }
 
 function isCandidateRectValid(
@@ -806,11 +890,19 @@ function getAffectedConnectionIds(
   evaluation: LayoutEvaluation,
   nextLayout: Map<string, Rect>,
   movedIds: Set<string>,
+  config: LayoutConfig,
 ): Set<string> {
   const affected = new Set(movedIds);
   const lines = getConnectionLines(items, evaluation.connections);
   for (const line of lines) {
     for (const movedId of movedIds) {
+      const movedItem = items.find((item) => item.id === movedId);
+      if (
+        config.weights.lineCrowding !== 0 &&
+        movedItem &&
+        Math.hypot(line.end.x - movedItem.anchor.x, line.end.y - movedItem.anchor.y) <=
+          config.lineFan.sharedAnchorTolerance
+      ) affected.add(line.id);
       const oldRect = evaluation.layout.get(movedId);
       const nextRect = nextLayout.get(movedId);
       if (
@@ -830,9 +922,9 @@ function evaluateChangedLayout(
   previousLayout: Map<string, Rect>,
   config: LayoutConfig,
 ): LayoutEvaluation {
-  const affected = config.weights.lineOcclusion === 0
+  const affected = config.weights.lineOcclusion === 0 && config.weights.lineCrowding === 0
     ? new Set(movedIds)
-    : getAffectedConnectionIds(items, current, nextLayout, movedIds);
+    : getAffectedConnectionIds(items, current, nextLayout, movedIds, config);
   const connections = reselectConnections(
     items,
     nextLayout,
@@ -987,6 +1079,7 @@ export function calculateFittingLayout(
       hardViolations: 0,
       lineOcclusions: 0,
       lineIntersections: 0,
+      lineCrowdingCost: 0,
       anchorOcclusions: 0,
       directionCost: 0,
       stabilityCost: 0,

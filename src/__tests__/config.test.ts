@@ -9,6 +9,10 @@ describe('App config', () => {
 
   it('keeps adaptive label scaling in the centralized config', () => {
     expect(defaultConfig.labelScale).toEqual({ min: 0.5, step: 0.1 });
+    expect(defaultConfig.lineFan).toEqual({
+      sharedAnchorTolerance: 2,
+      minimumAngleDegrees: 8,
+    });
     expect(defaultConfig.infoRectangleEditor).toEqual({
       minWidth: 120,
       minHeight: 80,
@@ -29,6 +33,7 @@ describe('App config', () => {
       defaultConfig.layoutWeights.lineIntersection,
     );
     expect(defaultConfig.layoutWeights.directionAlignment).toBeGreaterThan(0);
+    expect(defaultConfig.layoutWeights.lineCrowding).toBeGreaterThan(0);
     expect(defaultConfig.layoutWeights.infoEdgeDistance).toBeGreaterThan(0);
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
