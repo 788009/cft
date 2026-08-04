@@ -202,6 +202,10 @@ export function getConnectionPointCandidates(anchor: Point, rect: Rect): Point[]
   });
 }
 
+export function getDistanceCost(start: Point, end: Point, weight: number): number {
+  return Math.hypot(end.x - start.x, end.y - start.y) ** 2 * weight;
+}
+
 export function getBestConnectionPoint(
   anchor: Point,
   rect: Rect,
@@ -217,14 +221,13 @@ export function getBestConnectionPoint(
   let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
   let bestCost = Infinity;
   for (const point of candidates) {
-    const distance = Math.hypot(point.x - anchor.x, point.y - anchor.y) * weights.distance;
     const intersections = lines.filter((line) => (
       doSegmentsIntersect(point, anchor, line.start, line.end)
     )).length;
     const occlusions = obstacles.filter((obstacle) => (
       doesSegmentIntersectRectInterior(anchor, point, obstacle)
     )).length;
-    const cost = distance +
+    const cost = getDistanceCost(anchor, point, weights.distance) +
       intersections * weights.lineIntersection +
       occlusions * weights.lineOcclusion +
       (infoRect
@@ -292,8 +295,7 @@ function softCost(
     config.weights,
     config.infoRect,
   );
-  const distance = Math.hypot(connection.x - item.anchor.x, connection.y - item.anchor.y);
-  let cost = distance * config.weights.distance;
+  let cost = getDistanceCost(item.anchor, connection, config.weights.distance);
   cost += getDistanceToRectBoundary(connection, config.infoRect) *
     config.weights.infoEdgeDistance;
 

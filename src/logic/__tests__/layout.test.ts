@@ -6,6 +6,7 @@ import {
   getConnectionPoint,
   getBestConnectionPoint,
   getConnectionPointCandidates,
+  getDistanceCost,
   doesSegmentIntersectRectInterior,
   getDistanceToRectBoundary,
   isOverlap,
@@ -126,6 +127,10 @@ describe('Layout Logic', () => {
   it('should connect a line to the nearest label edge', () => {
     expect(getConnectionPoint({ x: 50, y: 150 }, { x: 100, y: 100, width: 100, height: 100 }))
       .toEqual({ x: 100, y: 150 });
+  });
+
+  it('uses a quadratic distance penalty', () => {
+    expect(getDistanceCost({ x: 0, y: 0 }, { x: 3, y: 4 }, 2)).toBe(50);
   });
 
   it('measures a connection point distance to the information rectangle boundary', () => {
