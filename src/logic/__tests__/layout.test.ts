@@ -150,6 +150,60 @@ describe('Layout Logic', () => {
     expect(doesSegmentIntersectRectInterior(anchor, point, blocker)).toBe(false);
   });
 
+  it('moves a card when line occlusion outweighs the shorter connection', () => {
+    const blocker = { id: 'blocker', anchor: { x: 150, y: 100 }, width: 40, height: 60 };
+    const target = { id: 'target', anchor: { x: 195, y: 100 }, width: 60, height: 40 };
+    const previous = new Map<string, Rect>([
+      ['blocker', { x: 200, y: 70, width: 40, height: 60 }],
+    ]);
+    const scenario: LayoutConfig = {
+      ...config,
+      canvasRect: { x: 0, y: 0, width: 300, height: 200 },
+      infoRect: { x: 100, y: 50, width: 100, height: 100 },
+      spacing: 0,
+      weights: {
+        ...config.weights,
+        distance: 1,
+        lineIntersection: 0,
+        lineOcclusion: 0,
+      },
+    };
+
+    const unpenalized = calculateLayout([blocker, target], previous, scenario).get('target')!;
+    const penalized = calculateLayout([blocker, target], previous, {
+      ...scenario,
+      weights: { ...scenario.weights, lineOcclusion: 40_000 },
+    }).get('target')!;
+    const blockerRect = previous.get('blocker')!;
+    const unpenalizedConnection = getBestConnectionPoint(
+      target.anchor,
+      unpenalized,
+      [blockerRect],
+      [],
+      scenario.weights,
+    );
+    const penalizedConnection = getBestConnectionPoint(
+      target.anchor,
+      penalized,
+      [blockerRect],
+      [],
+      { ...scenario.weights, lineOcclusion: 40_000 },
+    );
+
+    expect(unpenalized.x).toBe(240);
+    expect(doesSegmentIntersectRectInterior(
+      target.anchor,
+      unpenalizedConnection,
+      blockerRect,
+    )).toBe(true);
+    expect(penalized).not.toEqual(unpenalized);
+    expect(doesSegmentIntersectRectInterior(
+      target.anchor,
+      penalizedConnection,
+      blockerRect,
+    )).toBe(false);
+  });
+
   it('chooses the largest scale that satisfies every hard constraint', () => {
     const compactConfig: LayoutConfig = {
       ...config,

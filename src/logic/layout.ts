@@ -282,6 +282,11 @@ function softCost(
   )).length;
   cost += intersections * config.weights.lineIntersection;
 
+  const lineOcclusions = [...placedRects, ...config.obstacles].filter((obstacle) => (
+    doesSegmentIntersectRectInterior(item.anchor, connection, obstacle)
+  )).length;
+  cost += lineOcclusions * config.weights.lineOcclusion;
+
   const coveredLines = lines.filter((line) => (
     doesSegmentIntersectRectInterior(line.start, line.end, rect)
   )).length;
