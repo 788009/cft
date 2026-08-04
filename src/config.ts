@@ -1,5 +1,6 @@
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type MapInteractionMode = 'stable' | 'hide-and-reflow';
+export type CardGroupingMode = 'school' | 'region';
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface AppConfig {
@@ -55,6 +56,7 @@ export interface AppConfig {
   foreignCorner: Corner;
   settingsButtonCorner: Corner;
   mapInteractionMode: MapInteractionMode;
+  cardGroupingMode: CardGroupingMode;
   themeMode: ThemeMode;
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
@@ -127,6 +129,7 @@ export const defaultConfig: AppConfig = {
   foreignCorner: 'top-right',
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'hide-and-reflow',
+  cardGroupingMode: 'school',
   themeMode: 'system',
   showRegionNames: true,
   onlyShowRegionNamesWithSchools: true,

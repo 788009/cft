@@ -3,7 +3,11 @@ import { MapRenderer } from '@/map/Renderer';
 import { ViewState } from '@/state/ViewState';
 import type { ProcessedData } from '@/types';
 import { DetailController } from '@/details/DetailController';
-import { defaultConfig, type MapInteractionMode } from '@/config';
+import {
+  defaultConfig,
+  type CardGroupingMode,
+  type MapInteractionMode,
+} from '@/config';
 import { SettingsController } from '@/settings/SettingsController';
 import { ThemeController } from '@/theme/ThemeController';
 import {
@@ -22,6 +26,7 @@ export class AppController {
   private readonly infoRectangleEditor: InfoRectangleEditorController;
   private readonly theme: ThemeController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
+  private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
   private showRegionNames = defaultConfig.showRegionNames;
   private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
   private showInfoRectangle = defaultConfig.showInfoRectangle;
@@ -50,6 +55,7 @@ export class AppController {
       this.uiContainer,
       this.interactionMode,
       defaultConfig.themeMode,
+      this.cardGroupingMode,
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
@@ -58,6 +64,10 @@ export class AppController {
         this.renderer?.setInteractionMode(mode);
       },
       (mode) => this.theme.setMode(mode),
+      (mode) => {
+        this.cardGroupingMode = mode;
+        this.renderer?.setCardGroupingMode(mode);
+      },
       (show) => {
         this.showRegionNames = show;
         this.renderer?.setShowRegionNames(show);
@@ -140,6 +150,7 @@ export class AppController {
         onRegionSelect: (selection) => this.details.openRegion(selection, data),
         onStudentSelect: (student) => this.details.openPerson(student),
         interactionMode: this.interactionMode,
+        cardGroupingMode: this.cardGroupingMode,
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,

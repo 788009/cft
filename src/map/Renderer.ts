@@ -2,7 +2,12 @@ import * as d3 from 'd3';
 import { createProjection, getProjectedPoint } from './projection';
 import { LevelManager, type MapLevel } from './LevelManager';
 import { loadGeoJSON } from '@/data/fetcher';
-import { MAP_STYLES, defaultConfig, type MapInteractionMode } from '@/config';
+import {
+  MAP_STYLES,
+  defaultConfig,
+  type CardGroupingMode,
+  type MapInteractionMode,
+} from '@/config';
 import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
 import { SchoolOverlay } from './SchoolOverlay';
@@ -16,6 +21,7 @@ import {
   getRegionLabelIdentity,
   type RegionLabelLevel,
 } from './RegionLabels';
+import { parseGeoJsonCenter, type RegionCenter } from './RegionCards';
 
 interface RegionLabelDatum {
   feature: any;
@@ -30,6 +36,7 @@ export interface MapRendererOptions {
   onRegionSelect?: (selection: RegionSelection) => void;
   onStudentSelect?: (student: Student) => void;
   interactionMode?: MapInteractionMode;
+  cardGroupingMode?: CardGroupingMode;
   showRegionNames?: boolean;
   onlyShowRegionNamesWithSchools?: boolean;
   showInfoRectangle?: boolean;
@@ -66,6 +73,7 @@ export class MapRenderer {
   private baseMapRendered = false;
   private dataReady = false;
   private interactionMode: MapInteractionMode;
+  private cardGroupingMode: CardGroupingMode;
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
   private domesticSchools: ProcessedData['domesticSchools'] = [];
@@ -92,6 +100,7 @@ export class MapRenderer {
     this.onViewChange = options.onViewChange;
     this.onRegionSelect = options.onRegionSelect;
     this.interactionMode = options.interactionMode ?? defaultConfig.mapInteractionMode;
+    this.cardGroupingMode = options.cardGroupingMode ?? defaultConfig.cardGroupingMode;
     this.showRegionNames = options.showRegionNames ?? defaultConfig.showRegionNames;
     this.onlyShowRegionNamesWithSchools = options.onlyShowRegionNamesWithSchools
       ?? defaultConfig.onlyShowRegionNamesWithSchools;
@@ -126,6 +135,7 @@ export class MapRenderer {
       infoRectanglePlacement: options.infoRectanglePlacement,
       onInfoRectanglePlacementChange: options.onInfoRectanglePlacementChange,
     });
+    this.schoolOverlay.setCardGroupingMode(this.cardGroupingMode);
 
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);
@@ -160,6 +170,15 @@ export class MapRenderer {
 
   public setInteractionMode(mode: MapInteractionMode): void {
     this.interactionMode = mode;
+  }
+
+  public setCardGroupingMode(mode: CardGroupingMode): void {
+    if (mode === this.cardGroupingMode) return;
+    this.cardGroupingMode = mode;
+    this.schoolOverlay.setCardGroupingMode(mode);
+    this.schoolOverlay.setMapLevel(this.requestedLevel);
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -219,6 +238,9 @@ export class MapRenderer {
 
     if (newLevel !== this.requestedLevel) {
       this.schoolOverlay.clearHoveredRegion();
+      if (this.cardGroupingMode === 'region' && this.interactionMode === 'stable') {
+        this.schoolOverlay.setInteractionActive(true);
+      }
       this.requestedLevel = newLevel;
       const version = ++this.transitionVersion;
       void this.updateLayerVisibility(newLevel, version);
@@ -278,6 +300,14 @@ export class MapRenderer {
       if (this.destroyed) return;
 
       const fixedProvincesFeatures = provinces.features.map(rewindFeature);
+      this.schoolOverlay.setRegionCenters(
+        'province',
+        this.getRegionCenters(fixedProvincesFeatures, 'province'),
+      );
+      this.schoolOverlay.setRegionCenters(
+        'city',
+        this.getMunicipalityCenters(fixedProvincesFeatures),
+      );
 
       // 1. 省级色块填充
       this.layers.provincesFill.selectAll('path')
@@ -346,6 +376,12 @@ export class MapRenderer {
 
     if (this.destroyed || version !== this.transitionVersion) return;
     this.requestedLevel = level;
+    if (this.cardGroupingMode === 'region') {
+      this.schoolOverlay.setMapLevel(level);
+      this.schoolOverlay.resetLayout();
+      this.updateSchoolOverlay();
+      if (this.interactionMode === 'stable') this.schoolOverlay.setInteractionActive(false);
+    }
     this.svg.attr('data-map-level', level);
     this.emitViewChange(level);
 
@@ -385,6 +421,12 @@ export class MapRenderer {
         .attr('vector-effect', 'non-scaling-stroke');
       this.bindRegionInteractions(this.layers.cities.selectAll('path'), 'city');
       this.renderRegionLabels(this.layers.cityLabels, features, 'city');
+      const centers = this.getRegionCenters(features, 'city');
+      const municipalityCenters = this.getMunicipalityCenters(
+        this.layers.provincesFill.selectAll<SVGPathElement, any>('path').data(),
+      );
+      for (const [adcode, center] of municipalityCenters) centers.set(adcode, center);
+      this.schoolOverlay.setRegionCenters('city', centers);
 
       return features.length > 0;
     });
@@ -427,6 +469,38 @@ export class MapRenderer {
     }));
 
     return featureGroups.flat();
+  }
+
+  private getRegionCenters(
+    features: any[],
+    level: 'province' | 'city',
+  ): Map<string, RegionCenter> {
+    const centers = new Map<string, RegionCenter>();
+    for (const feature of features) {
+      const properties = feature.properties ?? {};
+      const adcode = String(level === 'province'
+        ? properties.province_adcode ?? ''
+        : properties.city_adcode ?? properties.adcode ?? '');
+      if (!adcode || centers.has(adcode)) continue;
+      const coordinates = parseGeoJsonCenter(properties.center);
+      if (!coordinates) continue;
+      const name = level === 'province'
+        ? this.provinceNames.get(adcode)
+        : this.cityNames.get(adcode) ?? String(properties.name ?? '');
+      if (!name) continue;
+      centers.set(adcode, {
+        adcode,
+        name,
+        longitude: coordinates[0],
+        latitude: coordinates[1],
+      });
+    }
+    return centers;
+  }
+
+  private getMunicipalityCenters(features: any[]): Map<string, RegionCenter> {
+    const centers = this.getRegionCenters(features, 'province');
+    return new Map(Array.from(centers).filter(([adcode]) => this.validCities.has(adcode)));
   }
 
   private emitViewChange(level: MapLevel): void {

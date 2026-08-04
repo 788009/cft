@@ -21,6 +21,7 @@ describe('App config', () => {
 
   it('keeps settings placement and the default interaction mode configurable', () => {
     expect(defaultConfig.settingsButtonCorner).toBe('top-left');
+    expect(defaultConfig.cardGroupingMode).toBe('school');
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
     expect(defaultConfig.showRegionNames).toBe(true);

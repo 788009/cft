@@ -4,7 +4,7 @@ import {
   type Selection,
   type ZoomTransform,
 } from 'd3';
-import { defaultConfig } from '@/config';
+import { defaultConfig, type CardGroupingMode } from '@/config';
 import {
   calculateFittingLayout,
   getConnectionPoint,
@@ -25,10 +25,23 @@ import {
   type InfoRectangleResizeHandle,
 } from '@/map/InfoRectangle';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
+import type { MapLevel } from './LevelManager';
+import {
+  createRegionCardGroups,
+  type RegionCardGroup,
+  type RegionCenter,
+} from './RegionCards';
+
+interface CardDatum {
+  id: string;
+  title: string;
+  schools: SchoolGroup[];
+  region: RegionCardGroup | null;
+}
 
 interface LabelScene {
   id: string;
-  school: SchoolGroup;
+  card: CardDatum;
   anchor: Point;
   rect: Rect;
   baseSize: { width: number; height: number };
@@ -55,18 +68,27 @@ function textWidth(text: string, fontSize: number): number {
   ), 0);
 }
 
-function labelSize(school: SchoolGroup): { width: number; height: number } {
+function cardSize(card: CardDatum): { width: number; height: number } {
   const style = defaultConfig.labelStyle;
+  const students = card.schools.flatMap((school) => school.students);
   const contentWidth = Math.max(
-    textWidth(school.university, style.universityFontSize),
-    ...school.students.map((student) => textWidth(student.name, style.studentFontSize)),
+    textWidth(card.title, style.universityFontSize),
+    ...card.schools.map((school) => textWidth(school.university, style.universityFontSize)),
+    ...students.map((student) => textWidth(student.name, style.studentFontSize)),
   );
+  const contentRows = card.region
+    ? 1 + card.schools.reduce((rows, school) => (
+      rows + 1 + Math.ceil(school.students.length / style.studentsPerRow)
+    ), 0)
+    : 1 + Math.ceil(students.length / style.studentsPerRow);
   return {
     width: Math.max(style.minWidth, Math.min(style.maxWidth, contentWidth + style.paddingX * 2)),
-    height: style.paddingY * 2 + style.lineHeight * (
-      Math.ceil(school.students.length / style.studentsPerRow) + 1
-    ),
+    height: style.paddingY * 2 + style.lineHeight * contentRows,
   };
+}
+
+function schoolCard(school: SchoolGroup): CardDatum {
+  return { id: school.university, title: school.university, schools: [school], region: null };
 }
 
 function containsPoint(rect: Rect, point: Point): boolean {
@@ -82,7 +104,7 @@ function foreignPanelSize(schools: SchoolGroup[]): { width: number; height: numb
   const style = defaultConfig.labelStyle;
   const width = Math.max(
     style.minWidth,
-    ...schools.map((school) => labelSize(school).width),
+    ...schools.map((school) => cardSize(schoolCard(school)).width),
   );
   const contentHeight = schools.reduce((height, school, index) => {
     const rows = Math.ceil(school.students.length / style.studentsPerRow);
@@ -119,6 +141,12 @@ export class SchoolOverlay {
   private readonly editorHandles: Selection<SVGGElement, InfoRectangleResizeHandle, SVGGElement, unknown>;
   private domesticSchools: SchoolGroup[] = [];
   private foreignSchools: SchoolGroup[] = [];
+  private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
+  private mapLevel: MapLevel = 'province';
+  private regionCenters = new Map<'province' | 'city', Map<string, RegionCenter>>([
+    ['province', new Map()],
+    ['city', new Map()],
+  ]);
   private readonly positionHistory = new Map<string, Rect>();
   private readonly onStudentSelect?: (student: Student) => void;
   private readonly onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
@@ -223,6 +251,21 @@ export class SchoolOverlay {
     this.setSchools(data.domesticSchools, data.foreignSchools);
   }
 
+  public setCardGroupingMode(mode: CardGroupingMode): void {
+    this.cardGroupingMode = mode;
+  }
+
+  public setMapLevel(level: MapLevel): void {
+    this.mapLevel = level;
+  }
+
+  public setRegionCenters(
+    level: 'province' | 'city',
+    centers: ReadonlyMap<string, RegionCenter>,
+  ): void {
+    this.regionCenters.set(level, new Map(centers));
+  }
+
   public setShowInfoRectangle(show: boolean): void {
     this.showInfoRectangle = show;
     this.syncInfoRectangleVisibility();
@@ -315,20 +358,45 @@ export class SchoolOverlay {
     this.updateEditorGeometry();
 
     const baseVisibleInputs: LayoutInput[] = [];
-    const schoolsById = new Map<string, SchoolGroup>();
+    const cardsById = new Map<string, CardDatum>();
     const domesticAnchors: Point[] = [];
     for (const school of this.domesticSchools) {
       if (school.lat === null || school.lng === null) continue;
       const projected = getProjectedPoint(projection, school.lat, school.lng);
       if (!projected) continue;
       const [x, y] = transform.apply([projected.x, projected.y]);
+      domesticAnchors.push({ x, y });
+    }
+
+    const cards: Array<CardDatum & { longitude: number; latitude: number }> = this.cardGroupingMode === 'region'
+      ? createRegionCardGroups(
+        this.domesticSchools,
+        this.mapLevel,
+        this.regionCenters.get(this.mapLevel === 'province' ? 'province' : 'city') ?? new Map(),
+      ).map((region) => ({
+        id: region.id,
+        title: region.name,
+        schools: region.schools,
+        region,
+        longitude: region.longitude,
+        latitude: region.latitude,
+      }))
+      : this.domesticSchools.flatMap((school) => (
+        school.lat === null || school.lng === null
+          ? []
+          : [{ ...schoolCard(school), longitude: school.lng, latitude: school.lat }]
+      ));
+
+    for (const card of cards) {
+      const projected = getProjectedPoint(projection, card.latitude, card.longitude);
+      if (!projected) continue;
+      const [x, y] = transform.apply([projected.x, projected.y]);
       const anchor = { x, y };
-      domesticAnchors.push(anchor);
       if (!containsPoint(infoRect, anchor)) continue;
 
-      const size = labelSize(school);
-      baseVisibleInputs.push({ id: school.university, anchor, ...size });
-      schoolsById.set(school.university, school);
+      const size = cardSize(card);
+      baseVisibleInputs.push({ id: card.id, anchor, ...size });
+      cardsById.set(card.id, card);
     }
 
     const showForeignSchools = (
@@ -390,13 +458,13 @@ export class SchoolOverlay {
     const scenes: LabelScene[] = [];
     for (const input of fittingLayout.inputs) {
       const rect = fittingLayout.layout.get(input.id);
-      const school = schoolsById.get(input.id);
+      const card = cardsById.get(input.id);
       const baseInput = baseInputsById.get(input.id);
-      if (!rect || !school || !baseInput) continue;
+      if (!rect || !card || !baseInput) continue;
       this.positionHistory.set(input.id, rect);
       scenes.push({
         id: input.id,
-        school,
+        card,
         anchor: input.anchor,
         rect,
         baseSize: { width: baseInput.width, height: baseInput.height },
@@ -406,6 +474,7 @@ export class SchoolOverlay {
 
     this.root
       .attr('data-visible-school-count', scenes.length)
+      .attr('data-card-grouping', this.cardGroupingMode)
       .attr('data-label-scale', fittingLayout.scale)
       .attr('data-layout-fits', String(fittingLayout.satisfiesHardConstraints));
     this.renderLines(scenes);
@@ -561,9 +630,10 @@ export class SchoolOverlay {
       .attr('opacity', 0)
       .attr('vector-effect', 'non-scaling-stroke')
       .merge(lines)
-      .attr('data-school', (scene) => scene.school.university)
-      .attr('data-province-adcode', (scene) => scene.school.provinceAdcode)
-      .attr('data-city-adcode', (scene) => scene.school.cityAdcode)
+      .attr('data-school', (scene) => scene.card.region ? null : scene.card.schools[0]?.university)
+      .attr('data-region-card', (scene) => scene.card.region?.adcode ?? null)
+      .attr('data-province-adcode', (scene) => scene.card.schools[0]?.provinceAdcode)
+      .attr('data-city-adcode', (scene) => scene.card.schools[0]?.cityAdcode)
       .attr('x1', (scene) => scene.anchor.x)
       .attr('y1', (scene) => scene.anchor.y)
       .attr('x2', (scene) => getConnectionPoint(scene.anchor, scene.rect).x)
@@ -630,7 +700,9 @@ export class SchoolOverlay {
       .attr('font-weight', 600);
 
     const merged = entered.merge(labels)
-      .attr('data-school', (scene) => scene.school.university)
+      .attr('data-school', (scene) => scene.card.region ? null : scene.card.schools[0]?.university)
+      .attr('data-region-card', (scene) => scene.card.region?.adcode ?? null)
+      .attr('data-card-title', (scene) => scene.card.title)
       .attr('data-label-x', (scene) => scene.rect.x)
       .attr('data-label-y', (scene) => scene.rect.y)
       .attr('data-label-width', (scene) => scene.rect.width)
@@ -660,41 +732,77 @@ export class SchoolOverlay {
     merged.select<SVGTextElement>('text.school-label-title')
       .attr('x', style.paddingX)
       .attr('y', style.paddingY + style.universityFontSize)
-      .text((scene) => scene.school.university);
+      .text((scene) => scene.card.title);
 
-    merged.each(function updateStudents(scene) {
-      const studentLabels = select(this).selectAll<SVGTextElement, Student>('text.student-name')
-        .data(scene.school.students, (student) => String(student.originalIndex));
+    merged.each(function updateCardContent(scene) {
+      const universityRows = scene.card.region
+        ? scene.card.schools.map((school) => ({ school, row: 0 }))
+        : [];
+      if (scene.card.region) {
+        let nextRow = 2;
+        for (const item of universityRows) {
+          item.row = nextRow;
+          nextRow += 1 + Math.ceil(item.school.students.length / style.studentsPerRow);
+        }
+      }
+      const universityLabels = select(this)
+        .selectAll<SVGTextElement, { school: SchoolGroup; row: number }>('text.card-university')
+        .data(universityRows, (item) => item.school.university);
+      universityLabels.enter()
+        .append('text')
+        .attr('class', 'card-university')
+        .attr('fill', '#334155')
+        .attr('font-size', style.universityFontSize)
+        .attr('font-weight', 600)
+        .merge(universityLabels)
+        .attr('x', style.paddingX)
+        .attr('y', (item) => style.paddingY + style.lineHeight * item.row)
+        .text((item) => item.school.university);
+      universityLabels.exit().remove();
+
+      const studentRows = scene.card.schools.flatMap((school) => {
+        const universityRow = universityRows.find((item) => item.school === school)?.row ?? 1;
+        const firstStudentRow = scene.card.region ? universityRow + 1 : 2;
+        return school.students.map((student, index) => ({
+          student,
+          column: index % style.studentsPerRow,
+          row: firstStudentRow + Math.floor(index / style.studentsPerRow),
+        }));
+      });
+      const studentLabels = select(this).selectAll<SVGTextElement, {
+        student: Student;
+        column: number;
+        row: number;
+      }>('text.student-name')
+        .data(studentRows, (item) => String(item.student.originalIndex));
       studentLabels.enter()
         .append('text')
         .attr('class', 'student-name')
         .attr('fill', '#475569')
         .attr('font-size', style.studentFontSize)
         .merge(studentLabels)
-        .attr('x', (_, index) => (
+        .attr('x', (item) => (
           style.paddingX +
-          (index % style.studentsPerRow) * (
+          item.column * (
             (scene.baseSize.width - style.paddingX * 2) / style.studentsPerRow
           )
         ))
-        .attr('y', (_, index) => (
-          style.paddingY + style.lineHeight * (Math.floor(index / style.studentsPerRow) + 2)
-        ))
-        .attr('data-student-index', (student) => student.originalIndex)
-        .attr('data-has-contact', (student) => String(student.contact !== null))
+        .attr('y', (item) => style.paddingY + style.lineHeight * item.row)
+        .attr('data-student-index', (item) => item.student.originalIndex)
+        .attr('data-has-contact', (item) => String(item.student.contact !== null))
         .attr('role', 'button')
         .attr('tabindex', 0)
-        .attr('aria-label', (student) => `查看${student.name}详情`)
-        .on('click', (event: MouseEvent, student) => {
+        .attr('aria-label', (item) => `查看${item.student.name}详情`)
+        .on('click', (event: MouseEvent, item) => {
           (event.currentTarget as SVGTextElement).focus();
-          onStudentSelect?.(student);
+          onStudentSelect?.(item.student);
         })
-        .on('keydown', (event: KeyboardEvent, student) => {
+        .on('keydown', (event: KeyboardEvent, item) => {
           if (event.key !== 'Enter' && event.key !== ' ') return;
           event.preventDefault();
-          onStudentSelect?.(student);
+          onStudentSelect?.(item.student);
         })
-        .text((student) => student.name);
+        .text((item) => item.student.name);
       studentLabels.exit().remove();
     });
 
@@ -722,10 +830,10 @@ export class SchoolOverlay {
       .classed('is-highlighted', (scene) => {
         if (hoveredSchoolId) return scene.id === hoveredSchoolId;
         if (hoveredRegion) {
-          const schoolAdcode = hoveredRegion.level === 'province'
-            ? scene.school.provinceAdcode
-            : scene.school.cityAdcode;
-          return schoolAdcode === hoveredRegion.adcode;
+          return scene.card.schools.some((school) => (
+            (hoveredRegion.level === 'province' ? school.provinceAdcode : school.cityAdcode)
+              === hoveredRegion.adcode
+          ));
         }
         return touchSelectedSchoolId !== null && scene.id === touchSelectedSchoolId;
       });

@@ -1,6 +1,7 @@
 import settingsIconUrl from '@/assets/icons/settings.svg';
 import {
   defaultConfig,
+  type CardGroupingMode,
   type Corner,
   type MapInteractionMode,
   type ThemeMode,
@@ -24,6 +25,11 @@ const THEME_OPTIONS: SettingOption<ThemeMode>[] = [
   { value: 'dark', label: '深色', testId: 'theme-mode-dark' },
 ];
 
+const CARD_GROUPING_OPTIONS: SettingOption<CardGroupingMode>[] = [
+  { value: 'school', label: '按大学分类', testId: 'card-grouping-school' },
+  { value: 'region', label: '按地区分类', testId: 'card-grouping-region' },
+];
+
 const CORNER_CLASSES: Record<Corner, string> = {
   'top-left': 'top-3 left-3',
   'top-right': 'top-3 right-3',
@@ -36,12 +42,14 @@ export class SettingsController {
   private readonly button: HTMLButtonElement;
   private readonly onModeChange: (mode: MapInteractionMode) => void;
   private readonly onThemeModeChange: (mode: ThemeMode) => void;
+  private readonly onCardGroupingModeChange: (mode: CardGroupingMode) => void;
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   private readonly onShowInfoRectangleChange: (show: boolean) => void;
   private readonly onEditInfoRectangle: () => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
+  private cardGroupingMode: CardGroupingMode;
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
   private showInfoRectangle: boolean;
@@ -51,11 +59,13 @@ export class SettingsController {
     container: HTMLElement,
     initialMode: MapInteractionMode,
     initialThemeMode: ThemeMode,
+    initialCardGroupingMode: CardGroupingMode,
     initialShowRegionNames: boolean,
     initialOnlyShowRegionNamesWithSchools: boolean,
     initialShowInfoRectangle: boolean,
     onModeChange: (mode: MapInteractionMode) => void,
     onThemeModeChange: (mode: ThemeMode) => void,
+    onCardGroupingModeChange: (mode: CardGroupingMode) => void,
     onShowRegionNamesChange: (show: boolean) => void,
     onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
     onShowInfoRectangleChange: (show: boolean) => void,
@@ -64,11 +74,13 @@ export class SettingsController {
     this.container = container;
     this.mode = initialMode;
     this.themeMode = initialThemeMode;
+    this.cardGroupingMode = initialCardGroupingMode;
     this.showRegionNames = initialShowRegionNames;
     this.onlyShowRegionNamesWithSchools = initialOnlyShowRegionNamesWithSchools;
     this.showInfoRectangle = initialShowInfoRectangle;
     this.onModeChange = onModeChange;
     this.onThemeModeChange = onThemeModeChange;
+    this.onCardGroupingModeChange = onCardGroupingModeChange;
     this.onShowRegionNamesChange = onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
     this.onShowInfoRectangleChange = onShowInfoRectangleChange;
@@ -139,6 +151,13 @@ export class SettingsController {
         'theme-mode',
         THEME_OPTIONS,
         (value) => this.selectThemeMode(value),
+      ),
+      this.createChoiceGroup(
+        '卡片分类',
+        '学校信息卡片的分类方式',
+        'card-grouping-mode',
+        CARD_GROUPING_OPTIONS,
+        (value) => this.selectCardGroupingMode(value),
       ),
       this.createToggleSetting(),
     );
@@ -269,6 +288,13 @@ export class SettingsController {
     this.onThemeModeChange(mode);
   }
 
+  private selectCardGroupingMode(mode: CardGroupingMode): void {
+    if (mode === this.cardGroupingMode) return;
+    this.cardGroupingMode = mode;
+    this.updateChoices();
+    this.onCardGroupingModeChange(mode);
+  }
+
   private selectShowRegionNames(show: boolean): void {
     if (show === this.showRegionNames) return;
     this.showRegionNames = show;
@@ -295,7 +321,9 @@ export class SettingsController {
     for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
       const selectedValue = choice.dataset.setting === 'interaction-mode'
         ? this.mode
-        : this.themeMode;
+        : choice.dataset.setting === 'card-grouping-mode'
+          ? this.cardGroupingMode
+          : this.themeMode;
       const selected = choice.dataset.value === selectedValue;
       choice.setAttribute('aria-checked', String(selected));
       choice.classList.toggle('bg-teal-700', selected);
