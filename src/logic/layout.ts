@@ -237,8 +237,23 @@ export function getConnectionPointCandidates(anchor: Point, rect: Rect): Point[]
   });
 }
 
-export function getDistanceCost(start: Point, end: Point, weight: number): number {
-  return Math.hypot(end.x - start.x, end.y - start.y) ** 2 * weight;
+function getRectDiagonal(rect: Rect): number {
+  return Math.max(1, Math.hypot(rect.width, rect.height));
+}
+
+function getLinearDistanceCost(distance: number, weight: number, normalizationLength: number): number {
+  return distance / Math.max(1, normalizationLength) * weight;
+}
+
+export function getDistanceCost(
+  start: Point,
+  end: Point,
+  weight: number,
+  normalizationLength = 1,
+): number {
+  const normalizedDistance = Math.hypot(end.x - start.x, end.y - start.y) /
+    Math.max(1, normalizationLength);
+  return normalizedDistance ** 2 * weight;
 }
 
 export function getBestConnectionPoint(
@@ -251,10 +266,15 @@ export function getBestConnectionPoint(
     'distance' | 'lineIntersection' | 'lineOcclusion' | 'infoEdgeDistance'
   >,
   infoRect?: Rect,
+  canvasRect?: Rect,
 ): Point {
   const candidates = getConnectionPointCandidates(anchor, rect);
   let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
   let bestCost = Infinity;
+  const distanceNormalization = canvasRect ? getRectDiagonal(canvasRect) : 1;
+  const infoEdgeNormalization = infoRect
+    ? Math.max(1, Math.min(infoRect.width, infoRect.height))
+    : 1;
   for (const point of candidates) {
     const intersections = lines.filter((line) => (
       doSegmentsIntersect(point, anchor, line.start, line.end)
@@ -262,11 +282,15 @@ export function getBestConnectionPoint(
     const occlusions = obstacles.filter((obstacle) => (
       doesSegmentIntersectRectInterior(anchor, point, obstacle)
     )).length;
-    const cost = getDistanceCost(anchor, point, weights.distance) +
+    const cost = getDistanceCost(anchor, point, weights.distance, distanceNormalization) +
       intersections * weights.lineIntersection +
       occlusions * weights.lineOcclusion +
       (infoRect
-        ? getDistanceToRectBoundary(point, infoRect) * weights.infoEdgeDistance
+        ? getLinearDistanceCost(
+          getDistanceToRectBoundary(point, infoRect),
+          weights.infoEdgeDistance,
+          infoEdgeNormalization,
+        )
         : 0);
     if (cost < bestCost) {
       bestCost = cost;
@@ -329,13 +353,31 @@ function softCost(
     lines,
     config.weights,
     config.infoRect,
+    config.canvasRect,
   );
-  let cost = getDistanceCost(item.anchor, connection, config.weights.distance);
-  cost += getDistanceToRectBoundary(connection, config.infoRect) *
-    config.weights.infoEdgeDistance;
+  const canvasDiagonal = getRectDiagonal(config.canvasRect);
+  const infoEdgeNormalization = Math.max(
+    1,
+    Math.min(config.infoRect.width, config.infoRect.height),
+  );
+  let cost = getDistanceCost(
+    item.anchor,
+    connection,
+    config.weights.distance,
+    canvasDiagonal,
+  );
+  cost += getLinearDistanceCost(
+    getDistanceToRectBoundary(connection, config.infoRect),
+    config.weights.infoEdgeDistance,
+    infoEdgeNormalization,
+  );
 
   if (previousRect) {
-    cost += Math.hypot(rect.x - previousRect.x, rect.y - previousRect.y) * config.weights.stability;
+    cost += getLinearDistanceCost(
+      Math.hypot(rect.x - previousRect.x, rect.y - previousRect.y),
+      config.weights.stability,
+      canvasDiagonal,
+    );
   }
 
   const intersections = lines.filter((line) => (
@@ -432,6 +474,7 @@ export function calculateLayout(
         lines,
         config.weights,
         config.infoRect,
+        config.canvasRect,
       );
       lines.push({
         start: connection,
@@ -536,6 +579,8 @@ function reselectConnections(
         obstacles,
         lines,
         config.weights,
+        config.infoRect,
+        config.canvasRect,
       ));
     }
   }
@@ -566,9 +611,15 @@ export function evaluateLayout(
     distanceCost: 0,
   };
   const lines = getConnectionLines(items, connections);
+  const canvasDiagonal = getRectDiagonal(config.canvasRect);
 
   for (const line of lines) {
-    score.distanceCost += getDistanceCost(line.start, line.end, config.weights.distance);
+    score.distanceCost += getDistanceCost(
+      line.start,
+      line.end,
+      config.weights.distance,
+      canvasDiagonal,
+    );
     for (const other of items) {
       if (other.id === line.id) continue;
       const rect = layout.get(other.id);
@@ -602,8 +653,11 @@ export function evaluateLayout(
     if (!rect) continue;
     const previous = previousLayout.get(item.id);
     if (previous) {
-      score.stabilityCost += Math.hypot(rect.x - previous.x, rect.y - previous.y) *
-        config.weights.stability;
+      score.stabilityCost += getLinearDistanceCost(
+        Math.hypot(rect.x - previous.x, rect.y - previous.y),
+        config.weights.stability,
+        canvasDiagonal,
+      );
     }
     for (const anchorItem of items) {
       if (

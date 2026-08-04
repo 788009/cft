@@ -15,7 +15,7 @@ import {
   evaluateLayout,
   optimizeLayout,
 } from '../layout';
-import type { LayoutInput, LayoutConfig, Rect } from '../layout';
+import type { LayoutInput, LayoutConfig, Point, Rect } from '../layout';
 
 describe('Layout Logic', () => {
   const config: LayoutConfig = {
@@ -133,6 +133,94 @@ describe('Layout Logic', () => {
 
   it('uses a quadratic distance penalty', () => {
     expect(getDistanceCost({ x: 0, y: 0 }, { x: 3, y: 4 }, 2)).toBe(50);
+    expect(getDistanceCost({ x: 0, y: 0 }, { x: 3, y: 4 }, 2, 10)).toBe(0.5);
+  });
+
+  it('keeps normalized continuous costs stable when the scene is scaled', () => {
+    const item = { id: 'target', anchor: { x: 500, y: 500 }, width: 100, height: 50 };
+    const rect = { x: 100, y: 100, width: 100, height: 50 };
+    const previousRect = { x: 80, y: 90, width: 100, height: 50 };
+    const connection = { x: 200, y: 125 };
+    const base = evaluateLayout(
+      [item],
+      new Map([['target', rect]]),
+      new Map([['target', previousRect]]),
+      config,
+      new Map([['target', connection]]),
+    );
+    const scale = 2;
+    const scaledConfig: LayoutConfig = {
+      ...config,
+      canvasRect: { x: 0, y: 0, width: 2000, height: 2000 },
+      infoRect: { x: 500, y: 500, width: 1000, height: 1000 },
+      spacing: config.spacing * scale,
+    };
+    const scalePoint = (point: Point) => ({ x: point.x * scale, y: point.y * scale });
+    const scaleRect = (source: Rect) => ({
+      x: source.x * scale,
+      y: source.y * scale,
+      width: source.width * scale,
+      height: source.height * scale,
+    });
+    const scaledItem = {
+      ...item,
+      anchor: scalePoint(item.anchor),
+      width: item.width * scale,
+      height: item.height * scale,
+    };
+    const scaled = evaluateLayout(
+      [scaledItem],
+      new Map([['target', scaleRect(rect)]]),
+      new Map([['target', scaleRect(previousRect)]]),
+      scaledConfig,
+      new Map([['target', scalePoint(connection)]]),
+    );
+
+    expect(scaled.score.distanceCost).toBeCloseTo(base.score.distanceCost);
+    expect(scaled.score.stabilityCost).toBeCloseTo(base.score.stabilityCost);
+  });
+
+  it('selects a geometrically equivalent connection endpoint after scaling', () => {
+    const anchor = { x: 150, y: 150 };
+    const rect = { x: 0, y: 20, width: 100, height: 60 };
+    const infoRect = { x: 100, y: 100, width: 100, height: 100 };
+    const canvasRect = { x: 0, y: 0, width: 300, height: 300 };
+    const base = getBestConnectionPoint(
+      anchor,
+      rect,
+      [],
+      [],
+      config.weights,
+      infoRect,
+      canvasRect,
+    );
+    const scale = 3;
+    const scaled = getBestConnectionPoint(
+      { x: anchor.x * scale, y: anchor.y * scale },
+      {
+        x: rect.x * scale,
+        y: rect.y * scale,
+        width: rect.width * scale,
+        height: rect.height * scale,
+      },
+      [],
+      [],
+      config.weights,
+      {
+        x: infoRect.x * scale,
+        y: infoRect.y * scale,
+        width: infoRect.width * scale,
+        height: infoRect.height * scale,
+      },
+      {
+        x: canvasRect.x,
+        y: canvasRect.y,
+        width: canvasRect.width * scale,
+        height: canvasRect.height * scale,
+      },
+    );
+
+    expect({ x: scaled.x / scale, y: scaled.y / scale }).toEqual(base);
   });
 
   it('measures a connection point distance to the information rectangle boundary', () => {
