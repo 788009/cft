@@ -53,6 +53,7 @@ export interface AppConfig {
     anchorOcclusion: number;
     lineIntersection: number;
     lineOcclusion: number;
+    infoEdgeDistance: number;
     distance: number;
     stability: number;
   };
@@ -130,6 +131,7 @@ export const defaultConfig: AppConfig = {
     anchorOcclusion: 2000,
     lineIntersection: 1000,
     lineOcclusion: 4000,
+    infoEdgeDistance: 20,
     distance: 10,
     stability: 50,
   },

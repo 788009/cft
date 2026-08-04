@@ -521,6 +521,7 @@ export class SchoolOverlay {
         ],
         finalLines,
         defaultConfig.layoutWeights,
+        infoRect,
       );
       finalLines.push({ start: scene.connection, end: scene.anchor });
     }

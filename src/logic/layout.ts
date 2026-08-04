@@ -28,6 +28,7 @@ export interface LayoutConfig {
     anchorOcclusion: number;
     lineIntersection: number;
     lineOcclusion: number;
+    infoEdgeDistance: number;
     distance: number;
     stability: number;
   };
@@ -63,6 +64,19 @@ export function isInside(inner: Rect, outer: Rect): boolean {
     inner.y >= outer.y &&
     inner.x + inner.width <= outer.x + outer.width &&
     inner.y + inner.height <= outer.y + outer.height
+  );
+}
+
+export function getDistanceToRectBoundary(point: Point, rect: Rect): number {
+  const clampedX = Math.max(rect.x, Math.min(point.x, rect.x + rect.width));
+  const clampedY = Math.max(rect.y, Math.min(point.y, rect.y + rect.height));
+  const outsideDistance = Math.hypot(point.x - clampedX, point.y - clampedY);
+  if (outsideDistance > 0) return outsideDistance;
+  return Math.min(
+    point.x - rect.x,
+    rect.x + rect.width - point.x,
+    point.y - rect.y,
+    rect.y + rect.height - point.y,
   );
 }
 
@@ -193,7 +207,11 @@ export function getBestConnectionPoint(
   rect: Rect,
   obstacles: Rect[],
   lines: ConnectionLine[],
-  weights: Pick<LayoutConfig['weights'], 'distance' | 'lineIntersection' | 'lineOcclusion'>,
+  weights: Pick<
+    LayoutConfig['weights'],
+    'distance' | 'lineIntersection' | 'lineOcclusion' | 'infoEdgeDistance'
+  >,
+  infoRect?: Rect,
 ): Point {
   const candidates = getConnectionPointCandidates(anchor, rect);
   let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
@@ -208,7 +226,10 @@ export function getBestConnectionPoint(
     )).length;
     const cost = distance +
       intersections * weights.lineIntersection +
-      occlusions * weights.lineOcclusion;
+      occlusions * weights.lineOcclusion +
+      (infoRect
+        ? getDistanceToRectBoundary(point, infoRect) * weights.infoEdgeDistance
+        : 0);
     if (cost < bestCost) {
       bestCost = cost;
       bestPoint = point;
@@ -269,9 +290,12 @@ function softCost(
     [...placedRects, ...config.obstacles],
     lines,
     config.weights,
+    config.infoRect,
   );
   const distance = Math.hypot(connection.x - item.anchor.x, connection.y - item.anchor.y);
   let cost = distance * config.weights.distance;
+  cost += getDistanceToRectBoundary(connection, config.infoRect) *
+    config.weights.infoEdgeDistance;
 
   if (previousRect) {
     cost += Math.hypot(rect.x - previousRect.x, rect.y - previousRect.y) * config.weights.stability;
@@ -370,6 +394,7 @@ export function calculateLayout(
         [...placedRects.slice(0, -1), ...config.obstacles],
         lines,
         config.weights,
+        config.infoRect,
       );
       lines.push({
         start: connection,

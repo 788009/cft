@@ -7,6 +7,7 @@ import {
   getBestConnectionPoint,
   getConnectionPointCandidates,
   doesSegmentIntersectRectInterior,
+  getDistanceToRectBoundary,
   isOverlap,
   isInside,
   layoutSatisfiesHardConstraints,
@@ -25,6 +26,7 @@ describe('Layout Logic', () => {
       anchorOcclusion: 2000,
       lineIntersection: 1000,
       lineOcclusion: 4000,
+      infoEdgeDistance: 20,
       distance: 1,
       stability: 50,
     },
@@ -126,6 +128,43 @@ describe('Layout Logic', () => {
       .toEqual({ x: 100, y: 150 });
   });
 
+  it('measures a connection point distance to the information rectangle boundary', () => {
+    const rect = { x: 100, y: 100, width: 100, height: 100 };
+    expect(getDistanceToRectBoundary({ x: 150, y: 80 }, rect)).toBe(20);
+    expect(getDistanceToRectBoundary({ x: 80, y: 80 }, rect)).toBeCloseTo(Math.hypot(20, 20));
+    expect(getDistanceToRectBoundary({ x: 150, y: 150 }, rect)).toBe(50);
+  });
+
+  it('places a card closer to the information edge when that weight is enabled', () => {
+    const item = { id: 'target', anchor: { x: 150, y: 150 }, width: 40, height: 40 };
+    const scenario: LayoutConfig = {
+      ...config,
+      canvasRect: { x: 0, y: 0, width: 300, height: 300 },
+      infoRect: { x: 100, y: 100, width: 100, height: 100 },
+      spacing: 0,
+      weights: {
+        ...config.weights,
+        distance: 0,
+        stability: 0,
+        anchorOcclusion: 0,
+        lineIntersection: 0,
+        lineOcclusion: 0,
+        infoEdgeDistance: 0,
+      },
+    };
+    const unweighted = calculateLayout([item], new Map(), scenario).get(item.id)!;
+    const weighted = calculateLayout([item], new Map(), {
+      ...scenario,
+      weights: { ...scenario.weights, infoEdgeDistance: 20 },
+    }).get(item.id)!;
+    const unweightedConnection = getConnectionPoint(item.anchor, unweighted);
+    const weightedConnection = getConnectionPoint(item.anchor, weighted);
+
+    expect(getDistanceToRectBoundary(weightedConnection, scenario.infoRect)).toBeLessThan(
+      getDistanceToRectBoundary(unweightedConnection, scenario.infoRect),
+    );
+  });
+
   it('detects only intersections with a rectangle interior', () => {
     const rect = { x: 40, y: 40, width: 20, height: 20 };
     expect(doesSegmentIntersectRectInterior({ x: 0, y: 50 }, { x: 100, y: 50 }, rect)).toBe(true);
@@ -166,6 +205,7 @@ describe('Layout Logic', () => {
         distance: 1,
         lineIntersection: 0,
         lineOcclusion: 0,
+        infoEdgeDistance: 0,
       },
     };
 

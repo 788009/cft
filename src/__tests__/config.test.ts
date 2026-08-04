@@ -28,6 +28,7 @@ describe('App config', () => {
     expect(defaultConfig.layoutWeights.lineOcclusion).toBeGreaterThan(
       defaultConfig.layoutWeights.lineIntersection,
     );
+    expect(defaultConfig.layoutWeights.infoEdgeDistance).toBeGreaterThan(0);
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
     expect(defaultConfig.showRegionNames).toBe(true);
