@@ -31,6 +31,7 @@ export interface AppConfig {
     paddingX: number;
     paddingY: number;
     lineHeight: number;
+    regionFontSize: number;
     universityFontSize: number;
     studentFontSize: number;
     studentsPerRow: number;
@@ -104,6 +105,7 @@ export const defaultConfig: AppConfig = {
     paddingX: 5,
     paddingY: 7,
     lineHeight: 15,
+    regionFontSize: 14,
     universityFontSize: 12,
     studentFontSize: 11,
     studentsPerRow: 2,

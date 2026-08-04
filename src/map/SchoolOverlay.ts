@@ -28,6 +28,7 @@ import type { ProcessedData, SchoolGroup, Student } from '@/types';
 import type { MapLevel } from './LevelManager';
 import {
   createRegionCardGroups,
+  getRegionSchoolGrid,
   type RegionCardGroup,
   type RegionCenter,
 } from './RegionCards';
@@ -71,15 +72,26 @@ function textWidth(text: string, fontSize: number): number {
 function cardSize(card: CardDatum): { width: number; height: number } {
   const style = defaultConfig.labelStyle;
   const students = card.schools.flatMap((school) => school.students);
+  const regionGrid = card.region
+    ? getRegionSchoolGrid(card.schools, style.studentsPerRow)
+    : null;
+  const schoolContentWidths = card.schools.map((school) => Math.max(
+    textWidth(school.university, style.universityFontSize),
+    ...school.students.map((student) => textWidth(student.name, style.studentFontSize)),
+  ));
+  const twoColumnContentWidth = regionGrid?.columns === 2
+    ? Math.max(...schoolContentWidths.map((width, index) => (
+      width + (schoolContentWidths[index % 2 === 0 ? index + 1 : index - 1] ?? 0)
+    )))
+    : 0;
   const contentWidth = Math.max(
-    textWidth(card.title, style.universityFontSize),
-    ...card.schools.map((school) => textWidth(school.university, style.universityFontSize)),
+    textWidth(card.title, card.region ? style.regionFontSize : style.universityFontSize),
+    twoColumnContentWidth,
+    ...schoolContentWidths,
     ...students.map((student) => textWidth(student.name, style.studentFontSize)),
   );
-  const contentRows = card.region
-    ? 1 + card.schools.reduce((rows, school) => (
-      rows + 1 + Math.ceil(school.students.length / style.studentsPerRow)
-    ), 0)
+  const contentRows = regionGrid
+    ? regionGrid.contentRows
     : 1 + Math.ceil(students.length / style.studentsPerRow);
   return {
     width: Math.max(style.minWidth, Math.min(style.maxWidth, contentWidth + style.paddingX * 2)),
@@ -703,6 +715,11 @@ export class SchoolOverlay {
       .attr('data-school', (scene) => scene.card.region ? null : scene.card.schools[0]?.university)
       .attr('data-region-card', (scene) => scene.card.region?.adcode ?? null)
       .attr('data-card-title', (scene) => scene.card.title)
+      .attr('data-university-columns', (scene) => (
+        scene.card.region
+          ? getRegionSchoolGrid(scene.card.schools, style.studentsPerRow).columns
+          : 1
+      ))
       .attr('data-label-x', (scene) => scene.rect.x)
       .attr('data-label-y', (scene) => scene.rect.y)
       .attr('data-label-width', (scene) => scene.rect.width)
@@ -731,22 +748,28 @@ export class SchoolOverlay {
       .attr('height', (scene) => scene.baseSize.height);
     merged.select<SVGTextElement>('text.school-label-title')
       .attr('x', style.paddingX)
-      .attr('y', style.paddingY + style.universityFontSize)
+      .attr('y', (scene) => style.paddingY + (
+        scene.card.region ? style.regionFontSize : style.universityFontSize
+      ))
+      .attr('font-size', (scene) => (
+        scene.card.region ? style.regionFontSize : style.universityFontSize
+      ))
       .text((scene) => scene.card.title);
 
     merged.each(function updateCardContent(scene) {
-      const universityRows = scene.card.region
-        ? scene.card.schools.map((school) => ({ school, row: 0 }))
-        : [];
-      if (scene.card.region) {
-        let nextRow = 2;
-        for (const item of universityRows) {
-          item.row = nextRow;
-          nextRow += 1 + Math.ceil(item.school.students.length / style.studentsPerRow);
-        }
-      }
+      const regionGrid = scene.card.region
+        ? getRegionSchoolGrid(scene.card.schools, style.studentsPerRow)
+        : null;
+      const universityRows = regionGrid?.placements ?? [];
+      const cardColumnWidth = (
+        scene.baseSize.width - style.paddingX * 2
+      ) / (regionGrid?.columns ?? 1);
       const universityLabels = select(this)
-        .selectAll<SVGTextElement, { school: SchoolGroup; row: number }>('text.card-university')
+        .selectAll<SVGTextElement, {
+          school: SchoolGroup;
+          column: number;
+          row: number;
+        }>('text.card-university')
         .data(universityRows, (item) => item.school.university);
       universityLabels.enter()
         .append('text')
@@ -755,22 +778,25 @@ export class SchoolOverlay {
         .attr('font-size', style.universityFontSize)
         .attr('font-weight', 600)
         .merge(universityLabels)
-        .attr('x', style.paddingX)
+        .attr('x', (item) => style.paddingX + item.column * cardColumnWidth)
         .attr('y', (item) => style.paddingY + style.lineHeight * item.row)
         .text((item) => item.school.university);
       universityLabels.exit().remove();
 
       const studentRows = scene.card.schools.flatMap((school) => {
-        const universityRow = universityRows.find((item) => item.school === school)?.row ?? 1;
+        const placement = universityRows.find((item) => item.school === school);
+        const universityRow = placement?.row ?? 1;
         const firstStudentRow = scene.card.region ? universityRow + 1 : 2;
         return school.students.map((student, index) => ({
           student,
+          cardColumn: placement?.column ?? 0,
           column: index % style.studentsPerRow,
           row: firstStudentRow + Math.floor(index / style.studentsPerRow),
         }));
       });
       const studentLabels = select(this).selectAll<SVGTextElement, {
         student: Student;
+        cardColumn: number;
         column: number;
         row: number;
       }>('text.student-name')
@@ -783,8 +809,9 @@ export class SchoolOverlay {
         .merge(studentLabels)
         .attr('x', (item) => (
           style.paddingX +
+          item.cardColumn * cardColumnWidth +
           item.column * (
-            (scene.baseSize.width - style.paddingX * 2) / style.studentsPerRow
+            cardColumnWidth / style.studentsPerRow
           )
         ))
         .attr('y', (item) => style.paddingY + style.lineHeight * item.row)

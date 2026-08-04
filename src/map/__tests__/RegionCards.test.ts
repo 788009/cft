@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createRegionCardGroups, getRegionGroupingLevel, parseGeoJsonCenter } from '../RegionCards';
+import {
+  createRegionCardGroups,
+  getRegionGroupingLevel,
+  getRegionSchoolGrid,
+  parseGeoJsonCenter,
+} from '../RegionCards';
 import type { SchoolGroup } from '@/types';
 
 const school = (university: string, provinceAdcode: string, cityAdcode: string): SchoolGroup => ({
@@ -36,5 +41,20 @@ describe('region cards', () => {
       id: 'region:city:610100', level: 'city', schools,
       adcode: '610100', name: '西安市', longitude: 108.94, latitude: 34.34,
     }]);
+  });
+
+  it('uses two university columns only when a region contains at least four schools', () => {
+    const three = ['甲', '乙', '丙'].map((name) => school(name, '610000', '610100'));
+    const four = [...three, school('丁', '610000', '610100')];
+    expect(getRegionSchoolGrid(three, 2).columns).toBe(1);
+    expect(getRegionSchoolGrid(four, 2)).toMatchObject({
+      columns: 2,
+      placements: [
+        { school: four[0], column: 0, row: 2 },
+        { school: four[1], column: 1, row: 2 },
+        { school: four[2], column: 0, row: 3 },
+        { school: four[3], column: 1, row: 3 },
+      ],
+    });
   });
 });

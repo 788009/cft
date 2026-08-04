@@ -14,6 +14,18 @@ export interface RegionCardGroup extends RegionCenter {
   schools: SchoolGroup[];
 }
 
+export interface RegionSchoolPlacement {
+  school: SchoolGroup;
+  column: number;
+  row: number;
+}
+
+export interface RegionSchoolGrid {
+  columns: 1 | 2;
+  contentRows: number;
+  placements: RegionSchoolPlacement[];
+}
+
 export function parseGeoJsonCenter(value: unknown): [number, number] | null {
   if (typeof value !== 'string') return null;
   const match = value.trim().match(/^\[\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\]$/);
@@ -26,6 +38,25 @@ export function parseGeoJsonCenter(value: unknown): [number, number] | null {
 
 export function getRegionGroupingLevel(level: MapLevel): 'province' | 'city' {
   return level === 'province' ? 'province' : 'city';
+}
+
+export function getRegionSchoolGrid(
+  schools: SchoolGroup[],
+  studentsPerRow: number,
+): RegionSchoolGrid {
+  const columns = schools.length >= 4 ? 2 : 1;
+  const placements: RegionSchoolPlacement[] = [];
+  let nextRow = 2;
+  for (let index = 0; index < schools.length; index += columns) {
+    const schoolsInRow = schools.slice(index, index + columns);
+    for (const [column, school] of schoolsInRow.entries()) {
+      placements.push({ school, column, row: nextRow });
+    }
+    nextRow += Math.max(...schoolsInRow.map((school) => (
+      1 + Math.ceil(school.students.length / studentsPerRow)
+    )));
+  }
+  return { columns, contentRows: nextRow - 1, placements };
 }
 
 export function createRegionCardGroups(
