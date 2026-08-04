@@ -69,20 +69,42 @@ function textWidth(text: string, fontSize: number): number {
   ), 0);
 }
 
+function rowContentWidth(
+  texts: string[],
+  fontSize: number,
+  columns: number,
+  columnGap: number,
+): number {
+  let maximum = 0;
+  for (let index = 0; index < texts.length; index += columns) {
+    const row = texts.slice(index, index + columns);
+    maximum = Math.max(
+      maximum,
+      row.length * Math.max(...row.map((text) => textWidth(text, fontSize))) +
+        Math.max(0, row.length - 1) * columnGap,
+    );
+  }
+  return maximum;
+}
+
 function cardSize(card: CardDatum): { width: number; height: number } {
   const style = defaultConfig.labelStyle;
   const students = card.schools.flatMap((school) => school.students);
   const regionGrid = card.region
     ? getRegionSchoolGrid(card.schools, style.studentsPerRow)
     : null;
+  const effectiveStudentsPerRow = regionGrid?.studentsPerRow ?? style.studentsPerRow;
   const schoolContentWidths = card.schools.map((school) => Math.max(
     textWidth(school.university, style.universityFontSize),
-    ...school.students.map((student) => textWidth(student.name, style.studentFontSize)),
+    rowContentWidth(
+      school.students.map((student) => student.name),
+      style.studentFontSize,
+      effectiveStudentsPerRow,
+      style.studentColumnGap,
+    ),
   ));
   const twoColumnContentWidth = regionGrid?.columns === 2
-    ? Math.max(...schoolContentWidths.map((width, index) => (
-      width + (schoolContentWidths[index % 2 === 0 ? index + 1 : index - 1] ?? 0)
-    )))
+    ? Math.max(...schoolContentWidths) * 2 + style.regionColumnGap
     : 0;
   const contentWidth = Math.max(
     textWidth(card.title, card.region ? style.regionFontSize : style.universityFontSize),
@@ -94,7 +116,9 @@ function cardSize(card: CardDatum): { width: number; height: number } {
     ? regionGrid.contentRows
     : 1 + Math.ceil(students.length / style.studentsPerRow);
   return {
-    width: Math.max(style.minWidth, Math.min(style.maxWidth, contentWidth + style.paddingX * 2)),
+    width: card.region
+      ? Math.max(style.minWidth, contentWidth + style.paddingX * 2)
+      : Math.max(style.minWidth, Math.min(style.maxWidth, contentWidth + style.paddingX * 2)),
     height: style.paddingY * 2 + style.lineHeight * contentRows,
   };
 }
@@ -761,9 +785,15 @@ export class SchoolOverlay {
         ? getRegionSchoolGrid(scene.card.schools, style.studentsPerRow)
         : null;
       const universityRows = regionGrid?.placements ?? [];
+      const studentColumns = regionGrid?.studentsPerRow ?? style.studentsPerRow;
+      const studentColumnGap = studentColumns > 1 ? style.studentColumnGap : 0;
+      const cardColumnGap = regionGrid?.columns === 2 ? style.regionColumnGap : 0;
       const cardColumnWidth = (
-        scene.baseSize.width - style.paddingX * 2
+        scene.baseSize.width - style.paddingX * 2 - cardColumnGap
       ) / (regionGrid?.columns ?? 1);
+      const studentColumnWidth = (
+        cardColumnWidth - studentColumnGap * (studentColumns - 1)
+      ) / studentColumns;
       const universityLabels = select(this)
         .selectAll<SVGTextElement, {
           school: SchoolGroup;
@@ -778,7 +808,9 @@ export class SchoolOverlay {
         .attr('font-size', style.universityFontSize)
         .attr('font-weight', 600)
         .merge(universityLabels)
-        .attr('x', (item) => style.paddingX + item.column * cardColumnWidth)
+        .attr('x', (item) => (
+          style.paddingX + item.column * (cardColumnWidth + cardColumnGap)
+        ))
         .attr('y', (item) => style.paddingY + style.lineHeight * item.row)
         .text((item) => item.school.university);
       universityLabels.exit().remove();
@@ -790,8 +822,8 @@ export class SchoolOverlay {
         return school.students.map((student, index) => ({
           student,
           cardColumn: placement?.column ?? 0,
-          column: index % style.studentsPerRow,
-          row: firstStudentRow + Math.floor(index / style.studentsPerRow),
+          column: index % studentColumns,
+          row: firstStudentRow + Math.floor(index / studentColumns),
         }));
       });
       const studentLabels = select(this).selectAll<SVGTextElement, {
@@ -809,9 +841,9 @@ export class SchoolOverlay {
         .merge(studentLabels)
         .attr('x', (item) => (
           style.paddingX +
-          item.cardColumn * cardColumnWidth +
+          item.cardColumn * (cardColumnWidth + cardColumnGap) +
           item.column * (
-            cardColumnWidth / style.studentsPerRow
+            studentColumnWidth + studentColumnGap
           )
         ))
         .attr('y', (item) => style.paddingY + style.lineHeight * item.row)

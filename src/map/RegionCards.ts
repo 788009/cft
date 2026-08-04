@@ -22,6 +22,7 @@ export interface RegionSchoolPlacement {
 
 export interface RegionSchoolGrid {
   columns: 1 | 2;
+  studentsPerRow: number;
   contentRows: number;
   placements: RegionSchoolPlacement[];
 }
@@ -56,7 +57,12 @@ export function getRegionSchoolGrid(
       1 + Math.ceil(school.students.length / studentsPerRow)
     )));
   }
-  return { columns, contentRows: nextRow - 1, placements };
+  return {
+    columns,
+    studentsPerRow,
+    contentRows: nextRow - 1,
+    placements,
+  };
 }
 
 export function createRegionCardGroups(

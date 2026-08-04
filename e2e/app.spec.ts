@@ -221,6 +221,44 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   await expect(labels.first()).toBeVisible();
 });
 
+test('keeps two-column region card text inside the card without overlaps', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('card-grouping-region').click();
+  await page.getByTestId('close-settings-dialog').click();
+
+  const overlay = page.locator('g.school-overlay');
+  await expect(overlay).toHaveAttribute('data-card-grouping', 'region');
+  const cards = page.locator('g.school-label[data-university-columns="2"]');
+  await expect(cards.first()).toBeVisible();
+
+  const results = await cards.evaluateAll((nodes) => nodes.map((node) => {
+    const background = node.querySelector<SVGRectElement>('rect.school-label-background');
+    if (!background) throw new Error('地区卡片缺少外框');
+    const width = background.width.baseVal.value;
+    const height = background.height.baseVal.value;
+    const textBoxes = Array.from(node.querySelectorAll<SVGGraphicsElement>('text')).map((text) => {
+      const box = text.getBBox();
+      return { x: box.x, y: box.y, width: box.width, height: box.height, text: text.textContent };
+    });
+    const overflow = textBoxes.filter((box) => (
+      box.x < -0.5 || box.y < -0.5 ||
+      box.x + box.width > width + 0.5 || box.y + box.height > height + 0.5
+    ));
+    const overlaps = textBoxes.flatMap((box, index) => textBoxes.slice(index + 1)
+      .filter((other) => !(
+        box.x + box.width <= other.x + 0.5 ||
+        other.x + other.width <= box.x + 0.5 ||
+        box.y + box.height <= other.y + 0.5 ||
+        other.y + other.height <= box.y + 0.5
+      ))
+      .map((other) => [box.text, other.text]));
+    return { overflow, overlaps };
+  }));
+  expect(results.flatMap((result) => result.overflow)).toEqual([]);
+  expect(results.flatMap((result) => result.overlaps)).toEqual([]);
+});
+
 test('follows the browser color scheme and supports explicit theme settings', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');

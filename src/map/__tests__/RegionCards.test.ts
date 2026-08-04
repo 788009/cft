@@ -49,6 +49,7 @@ describe('region cards', () => {
     expect(getRegionSchoolGrid(three, 2).columns).toBe(1);
     expect(getRegionSchoolGrid(four, 2)).toMatchObject({
       columns: 2,
+      studentsPerRow: 2,
       placements: [
         { school: four[0], column: 0, row: 2 },
         { school: four[1], column: 1, row: 2 },
@@ -56,5 +57,26 @@ describe('region cards', () => {
         { school: four[3], column: 1, row: 3 },
       ],
     });
+  });
+
+  it('keeps two students per row inside each university column', () => {
+    const schools = ['甲', '乙', '丙', '丁'].map((name) => school(name, '610000', '610100'));
+    schools[0].students = Array.from({ length: 3 }, (_, originalIndex) => ({
+      no: originalIndex,
+      rawNo: String(originalIndex),
+      name: `同学${originalIndex}`,
+      short: '',
+      university: schools[0].university,
+      province: schools[0].province,
+      city: schools[0].city,
+      contact: null,
+      lat: 30,
+      lng: 110,
+      originalIndex,
+    }));
+    const grid = getRegionSchoolGrid(schools, 2);
+    expect(grid.studentsPerRow).toBe(2);
+    expect(grid.placements[2].row).toBe(5);
+    expect(grid.contentRows).toBe(5);
   });
 });

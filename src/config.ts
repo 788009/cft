@@ -28,6 +28,8 @@ export interface AppConfig {
   labelStyle: {
     minWidth: number;
     maxWidth: number;
+    regionColumnGap: number;
+    studentColumnGap: number;
     paddingX: number;
     paddingY: number;
     lineHeight: number;
@@ -102,6 +104,8 @@ export const defaultConfig: AppConfig = {
   labelStyle: {
     minWidth: 80,
     maxWidth: 224,
+    regionColumnGap: 12,
+    studentColumnGap: 6,
     paddingX: 5,
     paddingY: 7,
     lineHeight: 15,
