@@ -27,6 +27,7 @@ export interface LayoutConfig {
     outOfBounds: number;
     anchorOcclusion: number;
     lineIntersection: number;
+    lineOcclusion: number;
     distance: number;
     stability: number;
   };
@@ -104,6 +105,39 @@ function doSegmentsIntersect(p1: Point, p2: Point, p3: Point, p4: Point): boolea
   return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
 }
 
+export interface ConnectionLine {
+  start: Point;
+  end: Point;
+}
+
+export function doesSegmentIntersectRectInterior(
+  start: Point,
+  end: Point,
+  rect: Rect,
+): boolean {
+  const epsilon = 0.01;
+  const left = rect.x + epsilon;
+  const right = rect.x + rect.width - epsilon;
+  const top = rect.y + epsilon;
+  const bottom = rect.y + rect.height - epsilon;
+  if (left >= right || top >= bottom) return false;
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  let minimumT = 0;
+  let maximumT = 1;
+  const clipAxis = (origin: number, delta: number, minimum: number, maximum: number): boolean => {
+    if (Math.abs(delta) < Number.EPSILON) return origin >= minimum && origin <= maximum;
+    const first = (minimum - origin) / delta;
+    const second = (maximum - origin) / delta;
+    minimumT = Math.max(minimumT, Math.min(first, second));
+    maximumT = Math.min(maximumT, Math.max(first, second));
+    return minimumT <= maximumT;
+  };
+
+  return clipAxis(start.x, dx, left, right) && clipAxis(start.y, dy, top, bottom);
+}
+
 export function getConnectionPoint(anchor: Point, rect: Rect): Point {
   const clampedX = Math.max(rect.x, Math.min(anchor.x, rect.x + rect.width));
   const clampedY = Math.max(rect.y, Math.min(anchor.y, rect.y + rect.height));
@@ -125,6 +159,62 @@ export function getConnectionPoint(anchor: Point, rect: Rect): Point {
   ];
   edges.sort((a, b) => a.distance - b.distance);
   return edges[0].point;
+}
+
+export function getConnectionPointCandidates(anchor: Point, rect: Rect): Point[] {
+  const clampedX = Math.max(rect.x, Math.min(anchor.x, rect.x + rect.width));
+  const clampedY = Math.max(rect.y, Math.min(anchor.y, rect.y + rect.height));
+  const points: Point[] = [
+    getConnectionPoint(anchor, rect),
+    { x: rect.x, y: clampedY },
+    { x: rect.x + rect.width, y: clampedY },
+    { x: clampedX, y: rect.y },
+    { x: clampedX, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height / 2 },
+    { x: rect.x + rect.width, y: rect.y + rect.height / 2 },
+    { x: rect.x + rect.width / 2, y: rect.y },
+    { x: rect.x + rect.width / 2, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height },
+  ];
+  const seen = new Set<string>();
+  return points.filter((point) => {
+    const key = `${point.x},${point.y}`;
+    if (seen.has(key) || doesSegmentIntersectRectInterior(anchor, point, rect)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function getBestConnectionPoint(
+  anchor: Point,
+  rect: Rect,
+  obstacles: Rect[],
+  lines: ConnectionLine[],
+  weights: Pick<LayoutConfig['weights'], 'distance' | 'lineIntersection' | 'lineOcclusion'>,
+): Point {
+  const candidates = getConnectionPointCandidates(anchor, rect);
+  let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
+  let bestCost = Infinity;
+  for (const point of candidates) {
+    const distance = Math.hypot(point.x - anchor.x, point.y - anchor.y) * weights.distance;
+    const intersections = lines.filter((line) => (
+      doSegmentsIntersect(point, anchor, line.start, line.end)
+    )).length;
+    const occlusions = obstacles.filter((obstacle) => (
+      doesSegmentIntersectRectInterior(anchor, point, obstacle)
+    )).length;
+    const cost = distance +
+      intersections * weights.lineIntersection +
+      occlusions * weights.lineOcclusion;
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestPoint = point;
+    }
+  }
+  return bestPoint;
 }
 
 function violatesHardConstraints(rect: Rect, placedRects: Rect[], config: LayoutConfig): boolean {
@@ -169,10 +259,17 @@ function softCost(
   rect: Rect,
   previousRect: Rect | undefined,
   items: LayoutInput[],
-  lines: { start: Point; end: Point }[],
+  lines: ConnectionLine[],
+  placedRects: Rect[],
   config: LayoutConfig,
 ): number {
-  const connection = getConnectionPoint(item.anchor, rect);
+  const connection = getBestConnectionPoint(
+    item.anchor,
+    rect,
+    [...placedRects, ...config.obstacles],
+    lines,
+    config.weights,
+  );
   const distance = Math.hypot(connection.x - item.anchor.x, connection.y - item.anchor.y);
   let cost = distance * config.weights.distance;
 
@@ -184,6 +281,11 @@ function softCost(
     doSegmentsIntersect(connection, item.anchor, line.start, line.end)
   )).length;
   cost += intersections * config.weights.lineIntersection;
+
+  const coveredLines = lines.filter((line) => (
+    doesSegmentIntersectRectInterior(line.start, line.end, rect)
+  )).length;
+  cost += coveredLines * config.weights.lineOcclusion;
 
   const occlusions = items.filter((otherItem) => (
     otherItem.anchor.x >= rect.x - config.spacing &&
@@ -201,7 +303,7 @@ export function calculateLayout(
   config: LayoutConfig
 ): Map<string, Rect> {
   const result = new Map<string, Rect>();
-  const lines: { start: Point; end: Point }[] = [];
+  const lines: ConnectionLine[] = [];
   const placedRects: Rect[] = [];
 
   // 优先级：先放置之前存在的学校，再放置新出现的学校
@@ -234,7 +336,7 @@ export function calculateLayout(
       let minimumCost = Infinity;
       for (const rect of candidates) {
         if (violatesHardConstraints(rect, placedRects, config)) continue;
-        const cost = softCost(item, rect, prevRect, items, lines, config);
+        const cost = softCost(item, rect, prevRect, items, lines, placedRects, config);
         if (cost < minimumCost) {
           minimumCost = cost;
           bestRect = rect;
@@ -246,7 +348,7 @@ export function calculateLayout(
       let minimumCost = Infinity;
       for (const rect of restoredRect ? [restoredRect, ...candidates] : candidates) {
         const cost = hardConstraintCost(rect, placedRects, config) +
-          softCost(item, rect, prevRect, items, lines, config);
+          softCost(item, rect, prevRect, items, lines, placedRects, config);
         if (cost < minimumCost) {
           minimumCost = cost;
           bestRect = rect;
@@ -257,8 +359,15 @@ export function calculateLayout(
     if (bestRect) {
       result.set(item.id, bestRect);
       placedRects.push(bestRect);
+      const connection = getBestConnectionPoint(
+        item.anchor,
+        bestRect,
+        [...placedRects.slice(0, -1), ...config.obstacles],
+        lines,
+        config.weights,
+      );
       lines.push({
-        start: getConnectionPoint(item.anchor, bestRect),
+        start: connection,
         end: item.anchor,
       });
     }

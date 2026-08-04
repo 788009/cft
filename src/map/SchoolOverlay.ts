@@ -7,7 +7,7 @@ import {
 import { defaultConfig, type CardGroupingMode } from '@/config';
 import {
   calculateFittingLayout,
-  getConnectionPoint,
+  getBestConnectionPoint,
   isInside,
   isOverlap,
   type LayoutInput,
@@ -44,6 +44,7 @@ interface LabelScene {
   id: string;
   card: CardDatum;
   anchor: Point;
+  connection: Point;
   rect: Rect;
   baseSize: { width: number; height: number };
   scale: number;
@@ -502,10 +503,26 @@ export class SchoolOverlay {
         id: input.id,
         card,
         anchor: input.anchor,
+        connection: input.anchor,
         rect,
         baseSize: { width: baseInput.width, height: baseInput.height },
         scale: fittingLayout.scale,
       });
+    }
+
+    const finalLines: Array<{ start: Point; end: Point }> = [];
+    for (const scene of scenes) {
+      scene.connection = getBestConnectionPoint(
+        scene.anchor,
+        scene.rect,
+        [
+          ...scenes.filter((other) => other !== scene).map((other) => other.rect),
+          ...(foreignScene ? [foreignScene.rect] : []),
+        ],
+        finalLines,
+        defaultConfig.layoutWeights,
+      );
+      finalLines.push({ start: scene.connection, end: scene.anchor });
     }
 
     this.root
@@ -672,8 +689,8 @@ export class SchoolOverlay {
       .attr('data-city-adcode', (scene) => scene.card.schools[0]?.cityAdcode)
       .attr('x1', (scene) => scene.anchor.x)
       .attr('y1', (scene) => scene.anchor.y)
-      .attr('x2', (scene) => getConnectionPoint(scene.anchor, scene.rect).x)
-      .attr('y2', (scene) => getConnectionPoint(scene.anchor, scene.rect).y)
+      .attr('x2', (scene) => scene.connection.x)
+      .attr('y2', (scene) => scene.connection.y)
       .attr('opacity', 0.72);
 
     this.applyLineHighlight();

@@ -4,6 +4,9 @@ import {
   calculateLayout,
   createScaleCandidates,
   getConnectionPoint,
+  getBestConnectionPoint,
+  getConnectionPointCandidates,
+  doesSegmentIntersectRectInterior,
   isOverlap,
   isInside,
   layoutSatisfiesHardConstraints,
@@ -21,6 +24,7 @@ describe('Layout Logic', () => {
       outOfBounds: 5000,
       anchorOcclusion: 2000,
       lineIntersection: 1000,
+      lineOcclusion: 4000,
       distance: 1,
       stability: 50,
     },
@@ -120,6 +124,30 @@ describe('Layout Logic', () => {
   it('should connect a line to the nearest label edge', () => {
     expect(getConnectionPoint({ x: 50, y: 150 }, { x: 100, y: 100, width: 100, height: 100 }))
       .toEqual({ x: 100, y: 150 });
+  });
+
+  it('detects only intersections with a rectangle interior', () => {
+    const rect = { x: 40, y: 40, width: 20, height: 20 };
+    expect(doesSegmentIntersectRectInterior({ x: 0, y: 50 }, { x: 100, y: 50 }, rect)).toBe(true);
+    expect(doesSegmentIntersectRectInterior({ x: 0, y: 40 }, { x: 100, y: 40 }, rect)).toBe(false);
+  });
+
+  it('offers visible edge and corner candidates without crossing the target card', () => {
+    const anchor = { x: 0, y: 50 };
+    const rect = { x: 100, y: 40, width: 40, height: 20 };
+    const candidates = getConnectionPointCandidates(anchor, rect);
+    expect(candidates).toContainEqual({ x: 100, y: 50 });
+    expect(candidates).toContainEqual({ x: 100, y: 40 });
+    expect(candidates).not.toContainEqual({ x: 140, y: 50 });
+  });
+
+  it('chooses a longer edge point when the nearest line is obscured by another card', () => {
+    const anchor = { x: 0, y: 50 };
+    const rect = { x: 100, y: 30, width: 40, height: 40 };
+    const blocker = { x: 40, y: 47, width: 40, height: 6 };
+    const point = getBestConnectionPoint(anchor, rect, [blocker], [], config.weights);
+    expect(point).not.toEqual({ x: 100, y: 50 });
+    expect(doesSegmentIntersectRectInterior(anchor, point, blocker)).toBe(false);
   });
 
   it('chooses the largest scale that satisfies every hard constraint', () => {

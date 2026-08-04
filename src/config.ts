@@ -52,6 +52,7 @@ export interface AppConfig {
     outOfBounds: number;
     anchorOcclusion: number;
     lineIntersection: number;
+    lineOcclusion: number;
     distance: number;
     stability: number;
   };
@@ -128,6 +129,7 @@ export const defaultConfig: AppConfig = {
     outOfBounds: 5000,
     anchorOcclusion: 2000,
     lineIntersection: 1000,
+    lineOcclusion: 4000,
     distance: 10,
     stability: 50,
   },

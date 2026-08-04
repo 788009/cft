@@ -25,6 +25,9 @@ describe('App config', () => {
     expect(defaultConfig.labelStyle.regionFontSize).toBeGreaterThan(
       defaultConfig.labelStyle.universityFontSize,
     );
+    expect(defaultConfig.layoutWeights.lineOcclusion).toBeGreaterThan(
+      defaultConfig.layoutWeights.lineIntersection,
+    );
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
     expect(defaultConfig.showRegionNames).toBe(true);
