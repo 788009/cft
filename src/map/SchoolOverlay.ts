@@ -7,7 +7,6 @@ import {
 import { defaultConfig, type CardGroupingMode } from '@/config';
 import {
   calculateFittingLayout,
-  getBestConnectionPoint,
   isInside,
   isOverlap,
   type LayoutInput,
@@ -503,27 +502,11 @@ export class SchoolOverlay {
         id: input.id,
         card,
         anchor: input.anchor,
-        connection: input.anchor,
+        connection: fittingLayout.connections.get(input.id) ?? input.anchor,
         rect,
         baseSize: { width: baseInput.width, height: baseInput.height },
         scale: fittingLayout.scale,
       });
-    }
-
-    const finalLines: Array<{ start: Point; end: Point }> = [];
-    for (const scene of scenes) {
-      scene.connection = getBestConnectionPoint(
-        scene.anchor,
-        scene.rect,
-        [
-          ...scenes.filter((other) => other !== scene).map((other) => other.rect),
-          ...(foreignScene ? [foreignScene.rect] : []),
-        ],
-        finalLines,
-        defaultConfig.layoutWeights,
-        infoRect,
-      );
-      finalLines.push({ start: scene.connection, end: scene.anchor });
     }
 
     this.root

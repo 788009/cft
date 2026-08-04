@@ -38,8 +38,42 @@ export interface FittingLayoutResult {
   scale: number;
   inputs: LayoutInput[];
   layout: Map<string, Rect>;
+  connections: Map<string, Point>;
+  score: LayoutScore;
   config: LayoutConfig;
   satisfiesHardConstraints: boolean;
+}
+
+export interface LayoutScore {
+  hardViolations: number;
+  lineOcclusions: number;
+  lineIntersections: number;
+  anchorOcclusions: number;
+  stabilityCost: number;
+  distanceCost: number;
+}
+
+export interface CardConflictDiagnostic {
+  id: string;
+  lineOcclusions: number;
+  coveredLines: number;
+  lineIntersections: number;
+  anchorOcclusions: number;
+  relatedIds: Set<string>;
+}
+
+export interface LayoutEvaluation {
+  layout: Map<string, Rect>;
+  connections: Map<string, Point>;
+  score: LayoutScore;
+  diagnostics: Map<string, CardConflictDiagnostic>;
+}
+
+export interface LayoutOptimizationOptions {
+  maxPasses?: number;
+  maxAcceptedMoves?: number;
+  localOffsets?: number[];
+  globalCandidateLimit?: number;
 }
 
 export interface FittingLayoutOptions {
@@ -408,6 +442,382 @@ export function calculateLayout(
   return result;
 }
 
+function compareLayoutScores(left: LayoutScore, right: LayoutScore): number {
+  const leftValues = [
+    left.hardViolations,
+    left.lineOcclusions,
+    left.lineIntersections,
+    left.anchorOcclusions,
+    left.stabilityCost,
+    left.distanceCost,
+  ];
+  const rightValues = [
+    right.hardViolations,
+    right.lineOcclusions,
+    right.lineIntersections,
+    right.anchorOcclusions,
+    right.stabilityCost,
+    right.distanceCost,
+  ];
+  for (let index = 0; index < leftValues.length; index += 1) {
+    if (leftValues[index] !== rightValues[index]) return leftValues[index] - rightValues[index];
+  }
+  return 0;
+}
+
+function countHardViolations(
+  items: LayoutInput[],
+  layout: Map<string, Rect>,
+  config: LayoutConfig,
+): number {
+  let violations = items.filter((item) => !layout.has(item.id)).length;
+  const rects = items.flatMap((item) => {
+    const rect = layout.get(item.id);
+    if (!rect) return [];
+    if (!isInside(rect, config.canvasRect)) violations += 1;
+    if (isOverlap(rect, config.infoRect, 0)) violations += 1;
+    violations += config.obstacles.filter((obstacle) => (
+      isOverlap(rect, obstacle, config.spacing)
+    )).length;
+    return [{ id: item.id, rect }];
+  });
+  for (let index = 0; index < rects.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < rects.length; otherIndex += 1) {
+      if (isOverlap(rects[index].rect, rects[otherIndex].rect, config.spacing)) violations += 1;
+    }
+  }
+  return violations;
+}
+
+function getConnectionLines(
+  items: LayoutInput[],
+  connections: Map<string, Point>,
+): Array<ConnectionLine & { id: string }> {
+  return items.flatMap((item) => {
+    const start = connections.get(item.id);
+    return start ? [{ id: item.id, start, end: item.anchor }] : [];
+  });
+}
+
+function reselectConnections(
+  items: LayoutInput[],
+  layout: Map<string, Rect>,
+  config: LayoutConfig,
+  initial?: Map<string, Point>,
+  affectedIds?: Set<string>,
+): Map<string, Point> {
+  const connections = new Map<string, Point>();
+  for (const item of items) {
+    const rect = layout.get(item.id);
+    if (!rect) continue;
+    connections.set(item.id, initial?.get(item.id) ?? getConnectionPoint(item.anchor, rect));
+  }
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const item of items) {
+      if (affectedIds && !affectedIds.has(item.id)) continue;
+      const rect = layout.get(item.id);
+      if (!rect) continue;
+      const obstacles = [
+        ...items.flatMap((other) => {
+          if (other.id === item.id) return [];
+          const otherRect = layout.get(other.id);
+          return otherRect ? [otherRect] : [];
+        }),
+        ...config.obstacles,
+      ];
+      const lines = getConnectionLines(items, connections)
+        .filter((line) => line.id !== item.id)
+        .map(({ start, end }) => ({ start, end }));
+      connections.set(item.id, getBestConnectionPoint(
+        item.anchor,
+        rect,
+        obstacles,
+        lines,
+        config.weights,
+      ));
+    }
+  }
+  return connections;
+}
+
+export function evaluateLayout(
+  items: LayoutInput[],
+  layout: Map<string, Rect>,
+  previousLayout: Map<string, Rect>,
+  config: LayoutConfig,
+  connections = reselectConnections(items, layout, config),
+): LayoutEvaluation {
+  const diagnostics = new Map(items.map((item) => [item.id, {
+    id: item.id,
+    lineOcclusions: 0,
+    coveredLines: 0,
+    lineIntersections: 0,
+    anchorOcclusions: 0,
+    relatedIds: new Set<string>(),
+  }]));
+  const score: LayoutScore = {
+    hardViolations: countHardViolations(items, layout, config),
+    lineOcclusions: 0,
+    lineIntersections: 0,
+    anchorOcclusions: 0,
+    stabilityCost: 0,
+    distanceCost: 0,
+  };
+  const lines = getConnectionLines(items, connections);
+
+  for (const line of lines) {
+    score.distanceCost += getDistanceCost(line.start, line.end, config.weights.distance);
+    for (const other of items) {
+      if (other.id === line.id) continue;
+      const rect = layout.get(other.id);
+      if (!rect || !doesSegmentIntersectRectInterior(line.start, line.end, rect)) continue;
+      score.lineOcclusions += 1;
+      diagnostics.get(line.id)!.lineOcclusions += 1;
+      diagnostics.get(other.id)!.coveredLines += 1;
+      diagnostics.get(line.id)!.relatedIds.add(other.id);
+      diagnostics.get(other.id)!.relatedIds.add(line.id);
+    }
+    score.lineOcclusions += config.obstacles.filter((obstacle) => (
+      doesSegmentIntersectRectInterior(line.start, line.end, obstacle)
+    )).length;
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < lines.length; otherIndex += 1) {
+      const line = lines[index];
+      const other = lines[otherIndex];
+      if (!doSegmentsIntersect(line.start, line.end, other.start, other.end)) continue;
+      score.lineIntersections += 1;
+      diagnostics.get(line.id)!.lineIntersections += 1;
+      diagnostics.get(other.id)!.lineIntersections += 1;
+      diagnostics.get(line.id)!.relatedIds.add(other.id);
+      diagnostics.get(other.id)!.relatedIds.add(line.id);
+    }
+  }
+
+  for (const item of items) {
+    const rect = layout.get(item.id);
+    if (!rect) continue;
+    const previous = previousLayout.get(item.id);
+    if (previous) {
+      score.stabilityCost += Math.hypot(rect.x - previous.x, rect.y - previous.y) *
+        config.weights.stability;
+    }
+    for (const anchorItem of items) {
+      if (
+        anchorItem.anchor.x < rect.x - config.spacing ||
+        anchorItem.anchor.x > rect.x + rect.width + config.spacing ||
+        anchorItem.anchor.y < rect.y - config.spacing ||
+        anchorItem.anchor.y > rect.y + rect.height + config.spacing
+      ) continue;
+      score.anchorOcclusions += 1;
+      diagnostics.get(item.id)!.anchorOcclusions += 1;
+    }
+  }
+  return { layout, connections, score, diagnostics };
+}
+
+function diagnosticSeverity(diagnostic: CardConflictDiagnostic): number {
+  return diagnostic.lineOcclusions + diagnostic.coveredLines +
+    diagnostic.lineIntersections + diagnostic.anchorOcclusions;
+}
+
+function isCandidateRectValid(
+  id: string,
+  rect: Rect,
+  layout: Map<string, Rect>,
+  config: LayoutConfig,
+): boolean {
+  const otherRects = Array.from(layout).flatMap(([otherId, otherRect]) => (
+    otherId === id ? [] : [otherRect]
+  ));
+  return !violatesHardConstraints(rect, otherRects, config);
+}
+
+function getLocalCandidates(
+  item: LayoutInput,
+  current: Rect,
+  layout: Map<string, Rect>,
+  config: LayoutConfig,
+  offsets: number[],
+  globalCandidateLimit: number,
+): Rect[] {
+  const directions = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1],
+  ];
+  const candidates = offsets.flatMap((offset) => directions.map(([dx, dy]) => ({
+    x: current.x + dx * offset,
+    y: current.y + dy * offset,
+    width: item.width,
+    height: item.height,
+  })));
+  const globalCandidates = candidatePoints(item, config)
+    .map((point) => ({ ...point, width: item.width, height: item.height }))
+    .filter((rect) => isCandidateRectValid(item.id, rect, layout, config))
+    .sort((left, right) => {
+      const leftConnection = getConnectionPoint(item.anchor, left);
+      const rightConnection = getConnectionPoint(item.anchor, right);
+      return getDistanceCost(item.anchor, leftConnection, 1) -
+        getDistanceCost(item.anchor, rightConnection, 1);
+    })
+    .slice(0, globalCandidateLimit);
+  const seen = new Set<string>();
+  return [...candidates, ...globalCandidates].filter((rect) => {
+    const key = `${rect.x},${rect.y}`;
+    if (seen.has(key) || !isCandidateRectValid(item.id, rect, layout, config)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getAffectedConnectionIds(
+  items: LayoutInput[],
+  evaluation: LayoutEvaluation,
+  nextLayout: Map<string, Rect>,
+  movedIds: Set<string>,
+): Set<string> {
+  const affected = new Set(movedIds);
+  const lines = getConnectionLines(items, evaluation.connections);
+  for (const line of lines) {
+    for (const movedId of movedIds) {
+      const oldRect = evaluation.layout.get(movedId);
+      const nextRect = nextLayout.get(movedId);
+      if (
+        (oldRect && doesSegmentIntersectRectInterior(line.start, line.end, oldRect)) ||
+        (nextRect && doesSegmentIntersectRectInterior(line.start, line.end, nextRect))
+      ) affected.add(line.id);
+    }
+  }
+  return affected;
+}
+
+function evaluateChangedLayout(
+  items: LayoutInput[],
+  current: LayoutEvaluation,
+  nextLayout: Map<string, Rect>,
+  movedIds: Set<string>,
+  previousLayout: Map<string, Rect>,
+  config: LayoutConfig,
+): LayoutEvaluation {
+  const affected = getAffectedConnectionIds(items, current, nextLayout, movedIds);
+  const connections = reselectConnections(
+    items,
+    nextLayout,
+    config,
+    current.connections,
+    affected,
+  );
+  return evaluateLayout(items, nextLayout, previousLayout, config, connections);
+}
+
+export function optimizeLayout(
+  items: LayoutInput[],
+  initialLayout: Map<string, Rect>,
+  previousLayout: Map<string, Rect>,
+  config: LayoutConfig,
+  options: LayoutOptimizationOptions = {},
+): LayoutEvaluation {
+  const maxPasses = options.maxPasses ?? 4;
+  const maxAcceptedMoves = options.maxAcceptedMoves ?? 50;
+  const offsets = options.localOffsets ?? [16, 32, 48];
+  const globalCandidateLimit = options.globalCandidateLimit ?? 12;
+  const itemOrder = new Map(items.map((item, index) => [item.id, index]));
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const canMoveExisting = previousLayout.size === 0;
+  let current = evaluateLayout(items, initialLayout, previousLayout, config);
+  let acceptedMoves = 0;
+
+  for (let pass = 0; pass < maxPasses && acceptedMoves < maxAcceptedMoves; pass += 1) {
+    let improved = false;
+    const conflicted = Array.from(current.diagnostics.values())
+      .filter((diagnostic) => (
+        diagnosticSeverity(diagnostic) > 0 &&
+        (canMoveExisting || !previousLayout.has(diagnostic.id))
+      ))
+      .sort((left, right) => (
+        diagnosticSeverity(right) - diagnosticSeverity(left) ||
+        (itemOrder.get(left.id)! - itemOrder.get(right.id)!)
+      ));
+
+    for (const diagnostic of conflicted) {
+      if (acceptedMoves >= maxAcceptedMoves) break;
+      const item = itemsById.get(diagnostic.id);
+      const currentRect = current.layout.get(diagnostic.id);
+      if (!item || !currentRect) continue;
+      let best = current;
+      for (const candidate of getLocalCandidates(
+        item,
+        currentRect,
+        current.layout,
+        config,
+        offsets,
+        globalCandidateLimit,
+      )) {
+        const nextLayout = new Map(current.layout);
+        nextLayout.set(item.id, candidate);
+        const evaluated = evaluateChangedLayout(
+          items,
+          current,
+          nextLayout,
+          new Set([item.id]),
+          previousLayout,
+          config,
+        );
+        if (compareLayoutScores(evaluated.score, best.score) < 0) best = evaluated;
+      }
+      if (best === current) continue;
+      current = evaluateLayout(items, best.layout, previousLayout, config);
+      acceptedMoves += 1;
+      improved = true;
+    }
+
+    const pairKeys = new Set<string>();
+    const pairs: Array<[string, string]> = [];
+    for (const diagnostic of current.diagnostics.values()) {
+      if (!canMoveExisting && previousLayout.has(diagnostic.id)) continue;
+      for (const otherId of diagnostic.relatedIds) {
+        if (!canMoveExisting && previousLayout.has(otherId)) continue;
+        const ordered = [diagnostic.id, otherId].sort((left, right) => (
+          itemOrder.get(left)! - itemOrder.get(right)!
+        ));
+        const key = ordered.join('\u0000');
+        if (pairKeys.has(key)) continue;
+        pairKeys.add(key);
+        pairs.push([ordered[0], ordered[1]]);
+      }
+    }
+    for (const [leftId, rightId] of pairs) {
+      if (acceptedMoves >= maxAcceptedMoves) break;
+      const leftItem = itemsById.get(leftId);
+      const rightItem = itemsById.get(rightId);
+      const leftRect = current.layout.get(leftId);
+      const rightRect = current.layout.get(rightId);
+      if (!leftItem || !rightItem || !leftRect || !rightRect) continue;
+      const nextLayout = new Map(current.layout);
+      nextLayout.set(leftId, { x: rightRect.x, y: rightRect.y, width: leftItem.width, height: leftItem.height });
+      nextLayout.set(rightId, { x: leftRect.x, y: leftRect.y, width: rightItem.width, height: rightItem.height });
+      if (countHardViolations(items, nextLayout, config) !== 0) continue;
+      const evaluated = evaluateChangedLayout(
+        items,
+        current,
+        nextLayout,
+        new Set([leftId, rightId]),
+        previousLayout,
+        config,
+      );
+      if (compareLayoutScores(evaluated.score, current.score) >= 0) continue;
+      current = evaluateLayout(items, evaluated.layout, previousLayout, config);
+      acceptedMoves += 1;
+      improved = true;
+    }
+    if (!improved) break;
+  }
+  return current;
+}
+
 export function calculateFittingLayout(
   items: LayoutInput[],
   previousLayout: Map<string, Rect>,
@@ -417,12 +827,27 @@ export function calculateFittingLayout(
   for (const scale of createScaleCandidates(options.minScale, options.scaleStep)) {
     const scaledInputs = scaleLayoutInputs(items, scale);
     const config = options.getConfig(scale);
-    const layout = calculateLayout(scaledInputs, previousLayout, config);
+    const initialLayout = calculateLayout(scaledInputs, previousLayout, config);
+    const optimized = optimizeLayout(
+      scaledInputs,
+      initialLayout,
+      previousLayout,
+      config,
+    );
+    const layout = optimized.layout;
     const satisfiesHardConstraints = (
       (options.isScaleAllowed?.(scale) ?? true) &&
       layoutSatisfiesHardConstraints(scaledInputs, layout, config)
     );
-    const result = { scale, inputs: scaledInputs, layout, config, satisfiesHardConstraints };
+    const result = {
+      scale,
+      inputs: scaledInputs,
+      layout,
+      connections: optimized.connections,
+      score: optimized.score,
+      config,
+      satisfiesHardConstraints,
+    };
     fallback = result;
     if (satisfiesHardConstraints) return result;
   }
@@ -430,6 +855,15 @@ export function calculateFittingLayout(
     scale: 1,
     inputs: [],
     layout: new Map<string, Rect>(),
+    connections: new Map<string, Point>(),
+    score: {
+      hardViolations: 0,
+      lineOcclusions: 0,
+      lineIntersections: 0,
+      anchorOcclusions: 0,
+      stabilityCost: 0,
+      distanceCost: 0,
+    },
     config: options.getConfig(1),
     satisfiesHardConstraints: true,
   };

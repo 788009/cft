@@ -12,6 +12,8 @@ import {
   isOverlap,
   isInside,
   layoutSatisfiesHardConstraints,
+  evaluateLayout,
+  optimizeLayout,
 } from '../layout';
 import type { LayoutInput, LayoutConfig, Rect } from '../layout';
 
@@ -270,5 +272,73 @@ describe('Layout Logic', () => {
     expect(result.scale).toBe(0.5);
     expect(result.satisfiesHardConstraints).toBe(true);
     expect(layoutSatisfiesHardConstraints(result.inputs, result.layout, compactConfig)).toBe(true);
+  });
+
+  it('evaluates line occlusion and associates the blocking cards', () => {
+    const items: LayoutInput[] = [
+      { id: 'target', anchor: { x: 0, y: 50 }, width: 40, height: 40 },
+      { id: 'blocker', anchor: { x: 250, y: 200 }, width: 50, height: 50 },
+    ];
+    const layout = new Map<string, Rect>([
+      ['target', { x: 200, y: 30, width: 40, height: 40 }],
+      ['blocker', { x: 80, y: 45, width: 50, height: 50 }],
+    ]);
+    const evaluation = evaluateLayout(
+      items,
+      layout,
+      new Map(),
+      {
+        ...config,
+        infoRect: { x: 400, y: 400, width: 100, height: 100 },
+      },
+      new Map([
+        ['target', { x: 200, y: 50 }],
+        ['blocker', { x: 130, y: 70 }],
+      ]),
+    );
+
+    expect(evaluation.score.lineOcclusions).toBeGreaterThan(0);
+    expect(evaluation.diagnostics.get('target')?.relatedIds).toContain('blocker');
+    expect(evaluation.diagnostics.get('blocker')?.coveredLines).toBeGreaterThan(0);
+  });
+
+  it('keeps previous cards fixed while allowing a new card to improve locally', () => {
+    const items: LayoutInput[] = [
+      { id: 'old', anchor: { x: 100, y: 100 }, width: 50, height: 40 },
+      { id: 'new', anchor: { x: 140, y: 100 }, width: 50, height: 40 },
+    ];
+    const previous = new Map<string, Rect>([
+      ['old', { x: 0, y: 0, width: 50, height: 40 }],
+    ]);
+    const initial = calculateLayout(items, previous, config);
+    const result = optimizeLayout(items, initial, previous, config, {
+      maxPasses: 2,
+      maxAcceptedMoves: 3,
+    });
+
+    expect(result.layout.get('old')).toEqual(previous.get('old'));
+    expect(layoutSatisfiesHardConstraints(items, result.layout, config)).toBe(true);
+  });
+
+  it('is deterministic and respects the optimization move bound', () => {
+    const items: LayoutInput[] = Array.from({ length: 8 }, (_, index) => ({
+      id: `school-${index}`,
+      anchor: { x: 500, y: 500 },
+      width: 70,
+      height: 40,
+    }));
+    const initial = calculateLayout(items, new Map(), config);
+    const first = optimizeLayout(items, initial, new Map(), config, {
+      maxPasses: 1,
+      maxAcceptedMoves: 0,
+    });
+    const second = optimizeLayout(items, initial, new Map(), config, {
+      maxPasses: 1,
+      maxAcceptedMoves: 0,
+    });
+
+    expect(Array.from(first.layout.entries())).toEqual(Array.from(second.layout.entries()));
+    expect(first.score.hardViolations).toBe(0);
+    expect(first.layout.size).toBe(items.length);
   });
 });
