@@ -7,6 +7,7 @@ import {
   getBestConnectionPoint,
   getConnectionPointCandidates,
   getDistanceCost,
+  getDirectionAlignmentCost,
   doesSegmentIntersectRectInterior,
   getDistanceToRectBoundary,
   isOverlap,
@@ -27,6 +28,7 @@ describe('Layout Logic', () => {
       overlap: 10000,
       outOfBounds: 5000,
       anchorOcclusion: 2000,
+      directionAlignment: 50,
       lineIntersection: 1000,
       lineOcclusion: 4000,
       infoEdgeDistance: 20,
@@ -134,6 +136,53 @@ describe('Layout Logic', () => {
   it('uses a quadratic distance penalty', () => {
     expect(getDistanceCost({ x: 0, y: 0 }, { x: 3, y: 4 }, 2)).toBe(50);
     expect(getDistanceCost({ x: 0, y: 0 }, { x: 3, y: 4 }, 2, 10)).toBe(0.5);
+  });
+
+  it('normalizes direction alignment from matching to opposite directions', () => {
+    const infoRect = { x: 100, y: 100, width: 100, height: 100 };
+    const anchor = { x: 200, y: 150 };
+    expect(getDirectionAlignmentCost(
+      anchor,
+      { x: 200, y: 125, width: 50, height: 50 },
+      infoRect,
+      50,
+    )).toBe(0);
+    expect(getDirectionAlignmentCost(
+      anchor,
+      { x: 125, y: 200, width: 50, height: 50 },
+      infoRect,
+      50,
+    )).toBeCloseTo(25);
+    expect(getDirectionAlignmentCost(
+      anchor,
+      { x: 50, y: 125, width: 50, height: 50 },
+      infoRect,
+      50,
+    )).toBeCloseTo(50);
+  });
+
+  it('places a card on the side aligned with its anchor direction', () => {
+    const scenario: LayoutConfig = {
+      ...config,
+      canvasRect: { x: 0, y: 0, width: 300, height: 300 },
+      infoRect: { x: 100, y: 100, width: 100, height: 100 },
+      spacing: 0,
+      weights: {
+        ...config.weights,
+        anchorOcclusion: 0,
+        directionAlignment: 50,
+        lineIntersection: 0,
+        lineOcclusion: 0,
+        infoEdgeDistance: 0,
+        distance: 0,
+        stability: 0,
+      },
+    };
+    const rect = calculateLayout([
+      { id: 'east', anchor: { x: 180, y: 150 }, width: 40, height: 40 },
+    ], new Map(), scenario).get('east')!;
+
+    expect(rect.x).toBeGreaterThanOrEqual(scenario.infoRect.x + scenario.infoRect.width);
   });
 
   it('keeps normalized continuous costs stable when the scene is scaled', () => {
@@ -388,6 +437,23 @@ describe('Layout Logic', () => {
     expect(evaluation.score.lineOcclusions).toBeGreaterThan(0);
     expect(evaluation.diagnostics.get('target')?.relatedIds).toContain('blocker');
     expect(evaluation.diagnostics.get('blocker')?.coveredLines).toBeGreaterThan(0);
+
+    const disabled = evaluateLayout(
+      items,
+      layout,
+      new Map(),
+      {
+        ...config,
+        infoRect: { x: 400, y: 400, width: 100, height: 100 },
+        weights: { ...config.weights, lineOcclusion: 0 },
+      },
+      new Map([
+        ['target', { x: 200, y: 50 }],
+        ['blocker', { x: 130, y: 70 }],
+      ]),
+    );
+    expect(disabled.score.lineOcclusions).toBe(0);
+    expect(disabled.diagnostics.get('target')?.relatedIds).not.toContain('blocker');
   });
 
   it('keeps previous cards fixed while allowing a new card to improve locally', () => {

@@ -51,6 +51,7 @@ export interface AppConfig {
     overlap: number;
     outOfBounds: number;
     anchorOcclusion: number;
+    directionAlignment: number;
     lineIntersection: number;
     lineOcclusion: number;
     infoEdgeDistance: number;
@@ -129,12 +130,13 @@ export const defaultConfig: AppConfig = {
   layoutWeights: {
     overlap: 10000,
     outOfBounds: 5000,
-    anchorOcclusion: 2000,
-    lineIntersection: 1000,
-    lineOcclusion: 4000,
-    infoEdgeDistance: 20,
-    distance: 10,
-    stability: 50,
+    anchorOcclusion: 20,
+    directionAlignment: 50,
+    lineIntersection: 3,
+    lineOcclusion: 3,
+    infoEdgeDistance: 10,
+    distance: 100,
+    stability: 10,
   },
   searchArrowMergeDistance: 48,
   foreignCorner: 'top-right',

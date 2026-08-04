@@ -26,6 +26,7 @@ export interface LayoutConfig {
     overlap: number;
     outOfBounds: number;
     anchorOcclusion: number;
+    directionAlignment: number;
     lineIntersection: number;
     lineOcclusion: number;
     infoEdgeDistance: number;
@@ -49,6 +50,7 @@ export interface LayoutScore {
   lineOcclusions: number;
   lineIntersections: number;
   anchorOcclusions: number;
+  directionCost: number;
   stabilityCost: number;
   distanceCost: number;
 }
@@ -59,6 +61,7 @@ export interface CardConflictDiagnostic {
   coveredLines: number;
   lineIntersections: number;
   anchorOcclusions: number;
+  directionCost: number;
   relatedIds: Set<string>;
 }
 
@@ -242,6 +245,7 @@ function getRectDiagonal(rect: Rect): number {
 }
 
 function getLinearDistanceCost(distance: number, weight: number, normalizationLength: number): number {
+  if (weight === 0) return 0;
   return distance / Math.max(1, normalizationLength) * weight;
 }
 
@@ -251,9 +255,32 @@ export function getDistanceCost(
   weight: number,
   normalizationLength = 1,
 ): number {
+  if (weight === 0) return 0;
   const normalizedDistance = Math.hypot(end.x - start.x, end.y - start.y) /
     Math.max(1, normalizationLength);
   return normalizedDistance ** 2 * weight;
+}
+
+export function getDirectionAlignmentCost(
+  anchor: Point,
+  rect: Rect,
+  infoRect: Rect,
+  weight: number,
+): number {
+  if (weight === 0) return 0;
+  const centerX = infoRect.x + infoRect.width / 2;
+  const centerY = infoRect.y + infoRect.height / 2;
+  const anchorX = anchor.x - centerX;
+  const anchorY = anchor.y - centerY;
+  const cardX = rect.x + rect.width / 2 - centerX;
+  const cardY = rect.y + rect.height / 2 - centerY;
+  const anchorLength = Math.hypot(anchorX, anchorY);
+  const cardLength = Math.hypot(cardX, cardY);
+  if (anchorLength === 0 || cardLength === 0) return 0;
+  const cosine = Math.max(-1, Math.min(1, (
+    anchorX * cardX + anchorY * cardY
+  ) / (anchorLength * cardLength)));
+  return (1 - cosine) / 2 * weight;
 }
 
 export function getBestConnectionPoint(
@@ -271,21 +298,28 @@ export function getBestConnectionPoint(
   const candidates = getConnectionPointCandidates(anchor, rect);
   let bestPoint = candidates[0] ?? getConnectionPoint(anchor, rect);
   let bestCost = Infinity;
-  const distanceNormalization = canvasRect ? getRectDiagonal(canvasRect) : 1;
-  const infoEdgeNormalization = infoRect
+  const distanceNormalization = weights.distance !== 0 && canvasRect
+    ? getRectDiagonal(canvasRect)
+    : 1;
+  const infoEdgeNormalization = weights.infoEdgeDistance !== 0 && infoRect
     ? Math.max(1, Math.min(infoRect.width, infoRect.height))
     : 1;
   for (const point of candidates) {
-    const intersections = lines.filter((line) => (
-      doSegmentsIntersect(point, anchor, line.start, line.end)
-    )).length;
-    const occlusions = obstacles.filter((obstacle) => (
-      doesSegmentIntersectRectInterior(anchor, point, obstacle)
-    )).length;
-    const cost = getDistanceCost(anchor, point, weights.distance, distanceNormalization) +
-      intersections * weights.lineIntersection +
-      occlusions * weights.lineOcclusion +
-      (infoRect
+    const intersections = weights.lineIntersection === 0
+      ? 0
+      : lines.filter((line) => (
+        doSegmentsIntersect(point, anchor, line.start, line.end)
+      )).length;
+    const occlusions = weights.lineOcclusion === 0
+      ? 0
+      : obstacles.filter((obstacle) => (
+        doesSegmentIntersectRectInterior(anchor, point, obstacle)
+      )).length;
+    const cost = (weights.distance === 0
+      ? 0
+      : getDistanceCost(anchor, point, weights.distance, distanceNormalization)) +
+      intersections * weights.lineIntersection + occlusions * weights.lineOcclusion +
+      (infoRect && weights.infoEdgeDistance !== 0
         ? getLinearDistanceCost(
           getDistanceToRectBoundary(point, infoRect),
           weights.infoEdgeDistance,
@@ -311,13 +345,17 @@ function violatesHardConstraints(rect: Rect, placedRects: Rect[], config: Layout
 
 function hardConstraintCost(rect: Rect, placedRects: Rect[], config: LayoutConfig): number {
   let cost = 0;
-  if (!isInside(rect, config.canvasRect)) cost += config.weights.outOfBounds;
-  if (isOverlap(rect, config.infoRect, 0)) cost += config.weights.overlap;
-  if (placedRects.some((placed) => isOverlap(rect, placed, config.spacing))) {
-    cost += config.weights.overlap;
+  if (config.weights.outOfBounds !== 0 && !isInside(rect, config.canvasRect)) {
+    cost += config.weights.outOfBounds;
   }
-  if (config.obstacles.some((obstacle) => isOverlap(rect, obstacle, config.spacing))) {
-    cost += config.weights.overlap;
+  if (config.weights.overlap !== 0) {
+    if (isOverlap(rect, config.infoRect, 0)) cost += config.weights.overlap;
+    if (placedRects.some((placed) => isOverlap(rect, placed, config.spacing))) {
+      cost += config.weights.overlap;
+    }
+    if (config.obstacles.some((obstacle) => isOverlap(rect, obstacle, config.spacing))) {
+      cost += config.weights.overlap;
+    }
   }
   return cost;
 }
@@ -349,30 +387,36 @@ function softCost(
   const connection = getBestConnectionPoint(
     item.anchor,
     rect,
-    [...placedRects, ...config.obstacles],
-    lines,
+    config.weights.lineOcclusion === 0 ? [] : [...placedRects, ...config.obstacles],
+    config.weights.lineIntersection === 0 ? [] : lines,
     config.weights,
     config.infoRect,
     config.canvasRect,
   );
-  const canvasDiagonal = getRectDiagonal(config.canvasRect);
-  const infoEdgeNormalization = Math.max(
-    1,
-    Math.min(config.infoRect.width, config.infoRect.height),
-  );
-  let cost = getDistanceCost(
+  const canvasDiagonal = config.weights.distance !== 0 || config.weights.stability !== 0
+    ? getRectDiagonal(config.canvasRect)
+    : 1;
+  const infoEdgeNormalization = config.weights.infoEdgeDistance === 0
+    ? 1
+    : Math.max(1, Math.min(config.infoRect.width, config.infoRect.height));
+  let cost = config.weights.distance === 0
+    ? 0
+    : getDistanceCost(item.anchor, connection, config.weights.distance, canvasDiagonal);
+  if (config.weights.infoEdgeDistance !== 0) {
+    cost += getLinearDistanceCost(
+      getDistanceToRectBoundary(connection, config.infoRect),
+      config.weights.infoEdgeDistance,
+      infoEdgeNormalization,
+    );
+  }
+  cost += getDirectionAlignmentCost(
     item.anchor,
-    connection,
-    config.weights.distance,
-    canvasDiagonal,
-  );
-  cost += getLinearDistanceCost(
-    getDistanceToRectBoundary(connection, config.infoRect),
-    config.weights.infoEdgeDistance,
-    infoEdgeNormalization,
+    rect,
+    config.infoRect,
+    config.weights.directionAlignment,
   );
 
-  if (previousRect) {
+  if (previousRect && config.weights.stability !== 0) {
     cost += getLinearDistanceCost(
       Math.hypot(rect.x - previousRect.x, rect.y - previousRect.y),
       config.weights.stability,
@@ -380,29 +424,31 @@ function softCost(
     );
   }
 
-  const intersections = lines.filter((line) => (
-    doSegmentsIntersect(connection, item.anchor, line.start, line.end)
-  )).length;
-  cost += intersections * config.weights.lineIntersection;
-
-  const lineOcclusions = [...placedRects, ...config.obstacles].filter((obstacle) => (
-    doesSegmentIntersectRectInterior(item.anchor, connection, obstacle)
-  )).length;
-  cost += lineOcclusions * config.weights.lineOcclusion;
-
-  const coveredLines = lines.filter((line) => (
-    doesSegmentIntersectRectInterior(line.start, line.end, rect)
-  )).length;
-  cost += coveredLines * config.weights.lineOcclusion;
-
-  const occlusions = items.filter((otherItem) => (
-    otherItem.anchor.x >= rect.x - config.spacing &&
-    otherItem.anchor.x <= rect.x + rect.width + config.spacing &&
-    otherItem.anchor.y >= rect.y - config.spacing &&
-    otherItem.anchor.y <= rect.y + rect.height + config.spacing
-  )).length;
-
-  return cost + occlusions * config.weights.anchorOcclusion;
+  if (config.weights.lineIntersection !== 0) {
+    const intersections = lines.filter((line) => (
+      doSegmentsIntersect(connection, item.anchor, line.start, line.end)
+    )).length;
+    cost += intersections * config.weights.lineIntersection;
+  }
+  if (config.weights.lineOcclusion !== 0) {
+    const lineOcclusions = [...placedRects, ...config.obstacles].filter((obstacle) => (
+      doesSegmentIntersectRectInterior(item.anchor, connection, obstacle)
+    )).length;
+    const coveredLines = lines.filter((line) => (
+      doesSegmentIntersectRectInterior(line.start, line.end, rect)
+    )).length;
+    cost += (lineOcclusions + coveredLines) * config.weights.lineOcclusion;
+  }
+  if (config.weights.anchorOcclusion !== 0) {
+    const occlusions = items.filter((otherItem) => (
+      otherItem.anchor.x >= rect.x - config.spacing &&
+      otherItem.anchor.x <= rect.x + rect.width + config.spacing &&
+      otherItem.anchor.y >= rect.y - config.spacing &&
+      otherItem.anchor.y <= rect.y + rect.height + config.spacing
+    )).length;
+    cost += occlusions * config.weights.anchorOcclusion;
+  }
+  return cost;
 }
 
 export function calculateLayout(
@@ -470,8 +516,10 @@ export function calculateLayout(
       const connection = getBestConnectionPoint(
         item.anchor,
         bestRect,
-        [...placedRects.slice(0, -1), ...config.obstacles],
-        lines,
+        config.weights.lineOcclusion === 0
+          ? []
+          : [...placedRects.slice(0, -1), ...config.obstacles],
+        config.weights.lineIntersection === 0 ? [] : lines,
         config.weights,
         config.infoRect,
         config.canvasRect,
@@ -492,6 +540,7 @@ function compareLayoutScores(left: LayoutScore, right: LayoutScore): number {
     left.lineOcclusions,
     left.lineIntersections,
     left.anchorOcclusions,
+    left.directionCost,
     left.stabilityCost,
     left.distanceCost,
   ];
@@ -500,6 +549,7 @@ function compareLayoutScores(left: LayoutScore, right: LayoutScore): number {
     right.lineOcclusions,
     right.lineIntersections,
     right.anchorOcclusions,
+    right.directionCost,
     right.stabilityCost,
     right.distanceCost,
   ];
@@ -557,22 +607,27 @@ function reselectConnections(
     connections.set(item.id, initial?.get(item.id) ?? getConnectionPoint(item.anchor, rect));
   }
 
-  for (let pass = 0; pass < 2; pass += 1) {
+  const passCount = config.weights.lineIntersection === 0 ? 1 : 2;
+  for (let pass = 0; pass < passCount; pass += 1) {
     for (const item of items) {
       if (affectedIds && !affectedIds.has(item.id)) continue;
       const rect = layout.get(item.id);
       if (!rect) continue;
-      const obstacles = [
-        ...items.flatMap((other) => {
-          if (other.id === item.id) return [];
-          const otherRect = layout.get(other.id);
-          return otherRect ? [otherRect] : [];
-        }),
-        ...config.obstacles,
-      ];
-      const lines = getConnectionLines(items, connections)
-        .filter((line) => line.id !== item.id)
-        .map(({ start, end }) => ({ start, end }));
+      const obstacles = config.weights.lineOcclusion === 0
+        ? []
+        : [
+          ...items.flatMap((other) => {
+            if (other.id === item.id) return [];
+            const otherRect = layout.get(other.id);
+            return otherRect ? [otherRect] : [];
+          }),
+          ...config.obstacles,
+        ];
+      const lines = config.weights.lineIntersection === 0
+        ? []
+        : getConnectionLines(items, connections)
+          .filter((line) => line.id !== item.id)
+          .map(({ start, end }) => ({ start, end }));
       connections.set(item.id, getBestConnectionPoint(
         item.anchor,
         rect,
@@ -600,6 +655,7 @@ export function evaluateLayout(
     coveredLines: 0,
     lineIntersections: 0,
     anchorOcclusions: 0,
+    directionCost: 0,
     relatedIds: new Set<string>(),
   }]));
   const score: LayoutScore = {
@@ -607,35 +663,42 @@ export function evaluateLayout(
     lineOcclusions: 0,
     lineIntersections: 0,
     anchorOcclusions: 0,
+    directionCost: 0,
     stabilityCost: 0,
     distanceCost: 0,
   };
   const lines = getConnectionLines(items, connections);
-  const canvasDiagonal = getRectDiagonal(config.canvasRect);
+  const canvasDiagonal = config.weights.distance !== 0 || config.weights.stability !== 0
+    ? getRectDiagonal(config.canvasRect)
+    : 1;
 
   for (const line of lines) {
-    score.distanceCost += getDistanceCost(
-      line.start,
-      line.end,
-      config.weights.distance,
-      canvasDiagonal,
-    );
-    for (const other of items) {
-      if (other.id === line.id) continue;
-      const rect = layout.get(other.id);
-      if (!rect || !doesSegmentIntersectRectInterior(line.start, line.end, rect)) continue;
-      score.lineOcclusions += 1;
-      diagnostics.get(line.id)!.lineOcclusions += 1;
-      diagnostics.get(other.id)!.coveredLines += 1;
-      diagnostics.get(line.id)!.relatedIds.add(other.id);
-      diagnostics.get(other.id)!.relatedIds.add(line.id);
+    if (config.weights.distance !== 0) {
+      score.distanceCost += getDistanceCost(
+        line.start,
+        line.end,
+        config.weights.distance,
+        canvasDiagonal,
+      );
     }
-    score.lineOcclusions += config.obstacles.filter((obstacle) => (
-      doesSegmentIntersectRectInterior(line.start, line.end, obstacle)
-    )).length;
+    if (config.weights.lineOcclusion !== 0) {
+      for (const other of items) {
+        if (other.id === line.id) continue;
+        const rect = layout.get(other.id);
+        if (!rect || !doesSegmentIntersectRectInterior(line.start, line.end, rect)) continue;
+        score.lineOcclusions += 1;
+        diagnostics.get(line.id)!.lineOcclusions += 1;
+        diagnostics.get(other.id)!.coveredLines += 1;
+        diagnostics.get(line.id)!.relatedIds.add(other.id);
+        diagnostics.get(other.id)!.relatedIds.add(line.id);
+      }
+      score.lineOcclusions += config.obstacles.filter((obstacle) => (
+        doesSegmentIntersectRectInterior(line.start, line.end, obstacle)
+      )).length;
+    }
   }
 
-  for (let index = 0; index < lines.length; index += 1) {
+  for (let index = 0; config.weights.lineIntersection !== 0 && index < lines.length; index += 1) {
     for (let otherIndex = index + 1; otherIndex < lines.length; otherIndex += 1) {
       const line = lines[index];
       const other = lines[otherIndex];
@@ -651,14 +714,23 @@ export function evaluateLayout(
   for (const item of items) {
     const rect = layout.get(item.id);
     if (!rect) continue;
+    const directionCost = getDirectionAlignmentCost(
+      item.anchor,
+      rect,
+      config.infoRect,
+      config.weights.directionAlignment,
+    );
+    score.directionCost += directionCost;
+    diagnostics.get(item.id)!.directionCost = directionCost;
     const previous = previousLayout.get(item.id);
-    if (previous) {
+    if (previous && config.weights.stability !== 0) {
       score.stabilityCost += getLinearDistanceCost(
         Math.hypot(rect.x - previous.x, rect.y - previous.y),
         config.weights.stability,
         canvasDiagonal,
       );
     }
+    if (config.weights.anchorOcclusion === 0) continue;
     for (const anchorItem of items) {
       if (
         anchorItem.anchor.x < rect.x - config.spacing ||
@@ -675,7 +747,7 @@ export function evaluateLayout(
 
 function diagnosticSeverity(diagnostic: CardConflictDiagnostic): number {
   return diagnostic.lineOcclusions + diagnostic.coveredLines +
-    diagnostic.lineIntersections + diagnostic.anchorOcclusions;
+    diagnostic.lineIntersections + diagnostic.anchorOcclusions + diagnostic.directionCost;
 }
 
 function isCandidateRectValid(
@@ -711,16 +783,17 @@ function getLocalCandidates(
   })));
   const globalCandidates = candidatePoints(item, config)
     .map((point) => ({ ...point, width: item.width, height: item.height }))
-    .filter((rect) => isCandidateRectValid(item.id, rect, layout, config))
-    .sort((left, right) => {
+    .filter((rect) => isCandidateRectValid(item.id, rect, layout, config));
+  if (config.weights.distance !== 0) {
+    globalCandidates.sort((left, right) => {
       const leftConnection = getConnectionPoint(item.anchor, left);
       const rightConnection = getConnectionPoint(item.anchor, right);
       return getDistanceCost(item.anchor, leftConnection, 1) -
         getDistanceCost(item.anchor, rightConnection, 1);
-    })
-    .slice(0, globalCandidateLimit);
+    });
+  }
   const seen = new Set<string>();
-  return [...candidates, ...globalCandidates].filter((rect) => {
+  return [...candidates, ...globalCandidates.slice(0, globalCandidateLimit)].filter((rect) => {
     const key = `${rect.x},${rect.y}`;
     if (seen.has(key) || !isCandidateRectValid(item.id, rect, layout, config)) return false;
     seen.add(key);
@@ -757,7 +830,9 @@ function evaluateChangedLayout(
   previousLayout: Map<string, Rect>,
   config: LayoutConfig,
 ): LayoutEvaluation {
-  const affected = getAffectedConnectionIds(items, current, nextLayout, movedIds);
+  const affected = config.weights.lineOcclusion === 0
+    ? new Set(movedIds)
+    : getAffectedConnectionIds(items, current, nextLayout, movedIds);
   const connections = reselectConnections(
     items,
     nextLayout,
@@ -913,6 +988,7 @@ export function calculateFittingLayout(
       lineOcclusions: 0,
       lineIntersections: 0,
       anchorOcclusions: 0,
+      directionCost: 0,
       stabilityCost: 0,
       distanceCost: 0,
     },

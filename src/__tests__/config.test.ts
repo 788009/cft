@@ -25,9 +25,10 @@ describe('App config', () => {
     expect(defaultConfig.labelStyle.regionFontSize).toBeGreaterThan(
       defaultConfig.labelStyle.universityFontSize,
     );
-    expect(defaultConfig.layoutWeights.lineOcclusion).toBeGreaterThan(
+    expect(defaultConfig.layoutWeights.lineOcclusion).toBeGreaterThanOrEqual(
       defaultConfig.layoutWeights.lineIntersection,
     );
+    expect(defaultConfig.layoutWeights.directionAlignment).toBeGreaterThan(0);
     expect(defaultConfig.layoutWeights.infoEdgeDistance).toBeGreaterThan(0);
     expect(defaultConfig.mapInteractionMode).toBe('hide-and-reflow');
     expect(defaultConfig.themeMode).toBe('system');
