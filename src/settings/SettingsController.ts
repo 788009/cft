@@ -46,6 +46,7 @@ export class SettingsController {
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   private readonly onShowInfoRectangleChange: (show: boolean) => void;
+  private readonly onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   private readonly onEditInfoRectangle: () => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
@@ -53,6 +54,7 @@ export class SettingsController {
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
   private showInfoRectangle: boolean;
+  private enableLocalLayoutOptimization: boolean;
   private shell: ModalShell | null = null;
 
   constructor(
@@ -63,12 +65,14 @@ export class SettingsController {
     initialShowRegionNames: boolean,
     initialOnlyShowRegionNamesWithSchools: boolean,
     initialShowInfoRectangle: boolean,
+    initialEnableLocalLayoutOptimization: boolean,
     onModeChange: (mode: MapInteractionMode) => void,
     onThemeModeChange: (mode: ThemeMode) => void,
     onCardGroupingModeChange: (mode: CardGroupingMode) => void,
     onShowRegionNamesChange: (show: boolean) => void,
     onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
     onShowInfoRectangleChange: (show: boolean) => void,
+    onLocalLayoutOptimizationChange: (enabled: boolean) => void,
     onEditInfoRectangle: () => void,
   ) {
     this.container = container;
@@ -78,12 +82,14 @@ export class SettingsController {
     this.showRegionNames = initialShowRegionNames;
     this.onlyShowRegionNamesWithSchools = initialOnlyShowRegionNamesWithSchools;
     this.showInfoRectangle = initialShowInfoRectangle;
+    this.enableLocalLayoutOptimization = initialEnableLocalLayoutOptimization;
     this.onModeChange = onModeChange;
     this.onThemeModeChange = onThemeModeChange;
     this.onCardGroupingModeChange = onCardGroupingModeChange;
     this.onShowRegionNamesChange = onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
     this.onShowInfoRectangleChange = onShowInfoRectangleChange;
+    this.onLocalLayoutOptimizationChange = onLocalLayoutOptimizationChange;
     this.onEditInfoRectangle = onEditInfoRectangle;
     this.button = document.createElement('button');
     this.button.type = 'button';
@@ -159,6 +165,7 @@ export class SettingsController {
         CARD_GROUPING_OPTIONS,
         (value) => this.selectCardGroupingMode(value),
       ),
+      this.createLayoutOptimizationSetting(),
       this.createToggleSetting(),
     );
     this.shell.body.append(content);
@@ -243,6 +250,23 @@ export class SettingsController {
     return fieldset;
   }
 
+  private createLayoutOptimizationSetting(): HTMLFieldSetElement {
+    const fieldset = document.createElement('fieldset');
+    const legend = document.createElement('legend');
+    legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
+    legend.textContent = '排列优化';
+    const toggle = this.createSwitch(
+      'local-layout-optimization-toggle',
+      '二阶段局部重排',
+      () => this.selectLocalLayoutOptimization(!this.enableLocalLayoutOptimization),
+    );
+    const description = document.createElement('p');
+    description.className = 'mt-1 px-1 text-xs leading-5 text-slate-500 dark:text-slate-400';
+    description.textContent = '更好的排列效果，但可能对性能造成明显影响';
+    fieldset.append(legend, toggle, description);
+    return fieldset;
+  }
+
   private createSwitch(
     testId: string,
     labelText: string,
@@ -316,6 +340,13 @@ export class SettingsController {
     this.onShowInfoRectangleChange(show);
   }
 
+  private selectLocalLayoutOptimization(enabled: boolean): void {
+    if (enabled === this.enableLocalLayoutOptimization) return;
+    this.enableLocalLayoutOptimization = enabled;
+    this.updateChoices();
+    this.onLocalLayoutOptimizationChange(enabled);
+  }
+
   private updateChoices(): void {
     if (!this.shell) return;
     for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
@@ -345,9 +376,13 @@ export class SettingsController {
     const infoRectangleToggle = this.shell.body.querySelector<HTMLButtonElement>(
       '[data-testid="info-rectangle-toggle"]',
     );
+    const localLayoutOptimizationToggle = this.shell.body.querySelector<HTMLButtonElement>(
+      '[data-testid="local-layout-optimization-toggle"]',
+    );
     this.updateSwitch(toggle, this.showRegionNames);
     this.updateSwitch(filterToggle, this.onlyShowRegionNamesWithSchools);
     this.updateSwitch(infoRectangleToggle, this.showInfoRectangle);
+    this.updateSwitch(localLayoutOptimizationToggle, this.enableLocalLayoutOptimization);
     filterSetting?.classList.toggle('hidden', !this.showRegionNames);
     filterSetting?.setAttribute('aria-hidden', String(!this.showRegionNames));
   }

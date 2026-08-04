@@ -34,5 +34,6 @@ describe('App config', () => {
     expect(defaultConfig.showRegionNames).toBe(true);
     expect(defaultConfig.onlyShowRegionNamesWithSchools).toBe(true);
     expect(defaultConfig.showInfoRectangle).toBe(true);
+    expect(defaultConfig.enableLocalLayoutOptimization).toBe(false);
   });
 });

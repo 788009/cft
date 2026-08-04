@@ -15,6 +15,7 @@ export class DetailController {
   private onlyShowRegionNamesWithSchools: boolean;
   private showInfoRectangle: boolean;
   private infoRectanglePlacement: InfoRectanglePlacement;
+  private enableLocalLayoutOptimization: boolean;
 
   constructor(
     container: HTMLElement,
@@ -22,12 +23,14 @@ export class DetailController {
     onlyShowRegionNamesWithSchools: boolean,
     showInfoRectangle: boolean,
     infoRectanglePlacement: InfoRectanglePlacement,
+    enableLocalLayoutOptimization: boolean,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
     this.onlyShowRegionNamesWithSchools = onlyShowRegionNamesWithSchools;
     this.showInfoRectangle = showInfoRectangle;
     this.infoRectanglePlacement = infoRectanglePlacement;
+    this.enableLocalLayoutOptimization = enableLocalLayoutOptimization;
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -48,6 +51,11 @@ export class DetailController {
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
     this.infoRectanglePlacement = placement;
     this.regionRenderer?.setInfoRectanglePlacement(placement);
+  }
+
+  public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
+    this.enableLocalLayoutOptimization = enabled;
+    this.regionRenderer?.setLocalLayoutOptimizationEnabled(enabled);
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
@@ -75,6 +83,7 @@ export class DetailController {
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
       this.infoRectanglePlacement,
+      this.enableLocalLayoutOptimization,
     );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;

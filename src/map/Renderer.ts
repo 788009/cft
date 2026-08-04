@@ -40,6 +40,7 @@ export interface MapRendererOptions {
   showRegionNames?: boolean;
   onlyShowRegionNamesWithSchools?: boolean;
   showInfoRectangle?: boolean;
+  enableLocalLayoutOptimization?: boolean;
   infoRectanglePlacement?: InfoRectanglePlacement;
   onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
 }
@@ -134,6 +135,7 @@ export class MapRenderer {
       showInfoRectangle: options.showInfoRectangle,
       infoRectanglePlacement: options.infoRectanglePlacement,
       onInfoRectanglePlacementChange: options.onInfoRectanglePlacementChange,
+      enableLocalLayoutOptimization: options.enableLocalLayoutOptimization,
     });
     this.schoolOverlay.setCardGroupingMode(this.cardGroupingMode);
 
@@ -193,6 +195,12 @@ export class MapRenderer {
 
   public setShowInfoRectangle(show: boolean): void {
     this.schoolOverlay.setShowInfoRectangle(show);
+  }
+
+  public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
+    this.schoolOverlay.setLocalLayoutOptimizationEnabled(enabled);
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
   }
 
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {

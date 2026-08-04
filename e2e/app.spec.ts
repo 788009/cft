@@ -221,6 +221,22 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   await expect(labels.first()).toBeVisible();
 });
 
+test('keeps local layout optimization optional and disabled by default', async ({ page }) => {
+  await page.goto('/');
+
+  const overlay = page.getByTestId('map-container').locator('g.school-overlay');
+  await expect(overlay).toHaveAttribute('data-local-layout-optimization', 'false');
+  await page.getByTestId('settings-button').click();
+
+  const toggle = page.getByTestId('local-layout-optimization-toggle');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByText('更好的排列效果，但可能对性能造成明显影响', { exact: true })).toBeVisible();
+  await toggle.click();
+
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(overlay).toHaveAttribute('data-local-layout-optimization', 'true');
+});
+
 test('keeps two-column region card text inside the card without overlaps', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();

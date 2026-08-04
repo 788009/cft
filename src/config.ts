@@ -66,6 +66,7 @@ export interface AppConfig {
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
   showInfoRectangle: boolean;
+  enableLocalLayoutOptimization: boolean;
   regionLabelFontSize: number;
   export: {
     defaultWidth: number;
@@ -144,6 +145,7 @@ export const defaultConfig: AppConfig = {
   showRegionNames: true,
   onlyShowRegionNamesWithSchools: true,
   showInfoRectangle: true,
+  enableLocalLayoutOptimization: false,
   regionLabelFontSize: 11,
   export: {
     defaultWidth: 3840,

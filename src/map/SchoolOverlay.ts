@@ -61,6 +61,7 @@ export interface SchoolOverlayOptions {
   showInfoRectangle?: boolean;
   infoRectanglePlacement?: InfoRectanglePlacement;
   onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
+  enableLocalLayoutOptimization?: boolean;
 }
 
 function textWidth(text: string, fontSize: number): number {
@@ -188,6 +189,7 @@ export class SchoolOverlay {
   private readonly onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
   private infoRectanglePlacement: InfoRectanglePlacement;
   private showInfoRectangle: boolean;
+  private enableLocalLayoutOptimization: boolean;
   private infoRectangleEditing = false;
   private width = 0;
   private height = 0;
@@ -214,9 +216,12 @@ export class SchoolOverlay {
     this.infoRectanglePlacement = options.infoRectanglePlacement
       ?? getDefaultInfoRectanglePlacement();
     this.showInfoRectangle = options.showInfoRectangle ?? defaultConfig.showInfoRectangle;
+    this.enableLocalLayoutOptimization = options.enableLocalLayoutOptimization
+      ?? defaultConfig.enableLocalLayoutOptimization;
     this.root = svg.append('g')
       .attr('class', 'school-overlay')
       .attr('data-label-spacing', defaultConfig.labelSpacing)
+      .attr('data-local-layout-optimization', String(this.enableLocalLayoutOptimization))
       .style('pointer-events', 'none');
     this.infoRectangle = this.root.append('rect')
       .attr('class', 'info-rectangle')
@@ -305,6 +310,11 @@ export class SchoolOverlay {
   public setShowInfoRectangle(show: boolean): void {
     this.showInfoRectangle = show;
     this.syncInfoRectangleVisibility();
+  }
+
+  public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
+    this.enableLocalLayoutOptimization = enabled;
+    this.root.attr('data-local-layout-optimization', String(enabled));
   }
 
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
@@ -470,6 +480,7 @@ export class SchoolOverlay {
     const fittingLayout = calculateFittingLayout(baseVisibleInputs, layoutHistory, {
       minScale: defaultConfig.labelScale.min,
       scaleStep: defaultConfig.labelScale.step,
+      optimize: this.enableLocalLayoutOptimization,
       getConfig: (scale) => {
         const scene = createForeignScene(scale);
         return {

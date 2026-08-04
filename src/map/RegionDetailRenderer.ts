@@ -44,6 +44,7 @@ export class RegionDetailRenderer {
     onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools,
     showInfoRectangle = defaultConfig.showInfoRectangle,
     infoRectanglePlacement = getDefaultInfoRectanglePlacement(),
+    enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
@@ -64,6 +65,7 @@ export class RegionDetailRenderer {
       onStudentSelect,
       showInfoRectangle,
       infoRectanglePlacement,
+      enableLocalLayoutOptimization,
     });
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
@@ -109,6 +111,12 @@ export class RegionDetailRenderer {
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
     this.infoRectanglePlacement = placement;
     this.overlay.setInfoRectanglePlacement(placement);
+    this.updateScene();
+  }
+
+  public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
+    this.overlay.setLocalLayoutOptimizationEnabled(enabled);
+    this.overlay.resetLayout();
     this.updateScene();
   }
 

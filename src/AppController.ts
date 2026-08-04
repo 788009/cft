@@ -30,6 +30,7 @@ export class AppController {
   private showRegionNames = defaultConfig.showRegionNames;
   private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
   private showInfoRectangle = defaultConfig.showInfoRectangle;
+  private enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization;
   private infoRectanglePlacement = getDefaultInfoRectanglePlacement();
   private infoRectangleEditing = false;
   private dataPromise: Promise<ProcessedData> | null = null;
@@ -48,6 +49,7 @@ export class AppController {
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
       this.infoRectanglePlacement,
+      this.enableLocalLayoutOptimization,
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
@@ -59,6 +61,7 @@ export class AppController {
       this.showRegionNames,
       this.onlyShowRegionNamesWithSchools,
       this.showInfoRectangle,
+      this.enableLocalLayoutOptimization,
       (mode) => {
         this.interactionMode = mode;
         this.renderer?.setInteractionMode(mode);
@@ -82,6 +85,11 @@ export class AppController {
         this.showInfoRectangle = show;
         this.renderer?.setShowInfoRectangle(show);
         this.details.setShowInfoRectangle(show);
+      },
+      (enabled) => {
+        this.enableLocalLayoutOptimization = enabled;
+        this.renderer?.setLocalLayoutOptimizationEnabled(enabled);
+        this.details.setLocalLayoutOptimizationEnabled(enabled);
       },
       () => this.beginInfoRectangleEditing(),
     );
@@ -154,6 +162,7 @@ export class AppController {
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,
+        enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
         infoRectanglePlacement: this.infoRectanglePlacement,
         onInfoRectanglePlacementChange: (placement) => {
           this.infoRectanglePlacement = placement;

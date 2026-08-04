@@ -81,6 +81,7 @@ export interface FittingLayoutOptions {
   scaleStep: number;
   getConfig: (scale: number) => LayoutConfig;
   isScaleAllowed?: (scale: number) => boolean;
+  optimize?: boolean;
 }
 
 export function isOverlap(r1: Rect, r2: Rect, spacing: number): boolean {
@@ -828,12 +829,9 @@ export function calculateFittingLayout(
     const scaledInputs = scaleLayoutInputs(items, scale);
     const config = options.getConfig(scale);
     const initialLayout = calculateLayout(scaledInputs, previousLayout, config);
-    const optimized = optimizeLayout(
-      scaledInputs,
-      initialLayout,
-      previousLayout,
-      config,
-    );
+    const optimized = options.optimize
+      ? optimizeLayout(scaledInputs, initialLayout, previousLayout, config)
+      : evaluateLayout(scaledInputs, initialLayout, previousLayout, config);
     const layout = optimized.layout;
     const satisfiesHardConstraints = (
       (options.isScaleAllowed?.(scale) ?? true) &&
