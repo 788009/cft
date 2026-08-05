@@ -22,6 +22,7 @@ import {
   type RegionLabelLevel,
 } from './RegionLabels';
 import { parseGeoJsonCenter, type RegionCenter } from './RegionCards';
+import type { SearchResult } from '@/logic/search';
 
 interface RegionLabelDatum {
   feature: any;
@@ -172,6 +173,10 @@ export class MapRenderer {
 
   public setInteractionMode(mode: MapInteractionMode): void {
     this.interactionMode = mode;
+  }
+
+  public setSearchResult(result: SearchResult): void {
+    this.schoolOverlay.setSearchResult(result);
   }
 
   public setCardGroupingMode(mode: CardGroupingMode): void {

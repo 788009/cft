@@ -22,6 +22,68 @@ test('switches between portrait guidance and the landscape map', async ({ page }
   await expect(map.locator('.layer-provinces-fill path')).not.toHaveCount(0);
 });
 
+test('updates strict school search highlights without moving the map', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  const mapGeometry = map.locator('g.map-geometry');
+  const input = page.getByTestId('search-input');
+  const schoolTitle = map.locator('text.card-university, text.school-label-title').first();
+  await expect(schoolTitle).toBeVisible();
+  await expect(input).toBeEnabled();
+  const school = (await schoolTitle.textContent())?.trim();
+  if (!school || school.length < 2) throw new Error('学校名称不足以验证包含联想');
+  const initialTransform = await mapGeometry.getAttribute('transform');
+
+  await input.fill(school.slice(0, -1));
+  await expect(page.getByTestId('search-suggestions')).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-search-school-count', '0');
+
+  await input.fill(school);
+  await expect(overlay).not.toHaveAttribute('data-search-school-count', '0');
+  await expect(map.locator('text.is-search-match').filter({ hasText: school }).first()).toBeVisible();
+  expect(await mapGeometry.getAttribute('transform')).toBe(initialTransform);
+
+  await page.getByTestId('clear-search').click();
+  await expect(input).toHaveValue('');
+  await expect(overlay).toHaveAttribute('data-search-school-count', '0');
+  await expect(overlay).toHaveAttribute('data-search-student-count', '0');
+  await expect(map.locator('.is-search-match')).toHaveCount(0);
+});
+
+test('selects suggestions with the keyboard and highlights matching students', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  const input = page.getByTestId('search-input');
+  const schoolTitle = map.locator('text.card-university, text.school-label-title').first();
+  await expect(schoolTitle).toBeVisible();
+  const school = (await schoolTitle.textContent())?.trim();
+  if (!school) throw new Error('缺少学校名称');
+
+  await input.fill(school.slice(0, 1));
+  const firstSuggestion = page.getByTestId('search-suggestion').first();
+  await expect(firstSuggestion).toBeVisible();
+  const suggestionValue = await firstSuggestion.getAttribute('data-value');
+  if (!suggestionValue) throw new Error('联想项缺少查询值');
+  await input.press('ArrowDown');
+  await expect(input).toHaveAttribute('aria-activedescendant', 'search-suggestion-0');
+  await input.press('Enter');
+  await expect(input).toHaveValue(suggestionValue);
+  await expect(page.getByTestId('search-suggestions')).toBeHidden();
+
+  const studentName = map.locator('text.student-name').first();
+  await expect(studentName).toBeVisible();
+  const name = (await studentName.textContent())?.trim();
+  if (!name) throw new Error('缺少学生姓名');
+  await input.fill(name);
+  await expect(overlay).not.toHaveAttribute('data-search-student-count', '0');
+  await expect(map.locator('text.student-name.is-search-match').first()).toBeVisible();
+  await expect(overlay).toHaveAttribute('data-search-school-count', '0');
+});
+
 test('centers domestic school extremes and fits their dominant span to the information range', async ({ page }) => {
   await page.goto('/');
 

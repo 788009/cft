@@ -64,6 +64,32 @@
   stroke-width: 2;
 }
 
+.school-line.is-search-match {
+  stroke: #b45309;
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.school-anchor.is-search-match {
+  fill: #d97706;
+  r: 5px;
+}
+
+.school-label.is-search-match .school-label-background,
+.foreign-school-group.is-search-match .foreign-school-title {
+  stroke: #b45309;
+}
+
+.school-label.is-search-match .school-label-background {
+  stroke-width: 2;
+}
+
+text.is-search-match {
+  fill: #b45309;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .region-name-label {
   fill: #334155;
   stroke: rgba(255, 255, 255, 0.88);
@@ -111,6 +137,20 @@
 
 .dark .school-label.is-highlighted .school-label-background {
   stroke: #5eead4;
+}
+
+.dark .school-line.is-search-match,
+.dark .school-label.is-search-match .school-label-background,
+.dark .foreign-school-group.is-search-match .foreign-school-title {
+  stroke: #fbbf24;
+}
+
+.dark .school-anchor.is-search-match {
+  fill: #fbbf24;
+}
+
+.dark text.is-search-match {
+  fill: #fbbf24;
 }
 
 .dark .region-name-label {

@@ -15,6 +15,8 @@ import {
   type InfoRectanglePlacement,
 } from '@/map/InfoRectangle';
 import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorController';
+import { SearchController } from '@/search/SearchController';
+import type { SearchResult } from '@/logic/search';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
@@ -24,6 +26,7 @@ export class AppController {
   private readonly details: DetailController;
   private readonly settings: SettingsController;
   private readonly infoRectangleEditor: InfoRectangleEditorController;
+  private readonly search: SearchController;
   private readonly theme: ThemeController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
@@ -35,6 +38,11 @@ export class AppController {
   private infoRectangleEditing = false;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
+  private searchResult: SearchResult = {
+    matchedStudents: new Set(),
+    matchedSchools: new Set(),
+    targetSchools: new Set(),
+  };
   private renderVersion = 0;
   private started = false;
 
@@ -53,6 +61,10 @@ export class AppController {
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
+    this.search = new SearchController(this.uiContainer, (result) => {
+      this.searchResult = result;
+      this.renderer?.setSearchResult(result);
+    });
     this.settings = new SettingsController(
       this.uiContainer,
       this.interactionMode,
@@ -111,6 +123,7 @@ export class AppController {
     this.renderer = null;
     this.details.closeAll();
     this.infoRectangleEditor.close();
+    this.search.destroy();
     this.settings.destroy();
     this.theme.destroy();
   }
@@ -171,6 +184,8 @@ export class AppController {
       });
       this.renderer = renderer;
       renderer.setData(data);
+      renderer.setSearchResult(this.searchResult);
+      this.search.setData(data.students, data.schools);
       await renderer.renderBaseMap();
 
       if (!this.started || version !== this.renderVersion || this.renderer !== renderer) {
@@ -196,6 +211,7 @@ export class AppController {
     this.infoRectangleEditing = true;
     this.details.closeAll();
     this.settings.setButtonVisible(false);
+    this.search.setVisible(false);
     this.renderer.setInfoRectangleEditing(true);
     this.infoRectangleEditor.open({
       onConfirm: () => this.finishInfoRectangleEditing(),
@@ -209,6 +225,7 @@ export class AppController {
     this.renderer?.setInfoRectangleEditing(false);
     this.infoRectangleEditor.close();
     this.settings.setButtonVisible(true);
+    this.search.setVisible(true);
   }
 
   private resetInfoRectanglePlacement(): void {

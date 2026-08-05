@@ -31,6 +31,7 @@ import {
   type RegionCardGroup,
   type RegionCenter,
 } from './RegionCards';
+import type { SearchResult } from '@/logic/search';
 
 interface CardDatum {
   id: string;
@@ -198,6 +199,8 @@ export class SchoolOverlay {
   private hoveredSchoolId: string | null = null;
   private hoveredRegion: { level: 'province' | 'city'; adcode: string } | null = null;
   private touchSelectedSchoolId: string | null = null;
+  private matchedStudents = new Set<Student>();
+  private matchedSchools = new Set<SchoolGroup>();
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
     if (event.pointerType !== 'touch') return;
     const target = event.target;
@@ -315,6 +318,15 @@ export class SchoolOverlay {
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
     this.enableLocalLayoutOptimization = enabled;
     this.root.attr('data-local-layout-optimization', String(enabled));
+  }
+
+  public setSearchResult(result: SearchResult): void {
+    this.matchedStudents = new Set(result.matchedStudents);
+    this.matchedSchools = new Set(result.matchedSchools);
+    this.root
+      .attr('data-search-student-count', this.matchedStudents.size)
+      .attr('data-search-school-count', this.matchedSchools.size);
+    this.applySearchHighlight();
   }
 
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
@@ -878,6 +890,8 @@ export class SchoolOverlay {
       studentLabels.exit().remove();
     });
 
+    this.applySearchHighlight();
+
     merged.interrupt()
       .transition()
       .duration(defaultConfig.layoutTransitionDurationMs)
@@ -914,6 +928,41 @@ export class SchoolOverlay {
       .classed('is-highlighted', (scene) => (
         scene.id === hoveredSchoolId || scene.id === touchSelectedSchoolId
       ));
+  }
+
+  private applySearchHighlight(): void {
+    const matchedStudents = this.matchedStudents;
+    const matchedSchools = this.matchedSchools;
+    const sceneMatchesSchool = (scene: LabelScene): boolean => (
+      scene.card.schools.some((school) => matchedSchools.has(school))
+    );
+
+    this.linesLayer.selectAll<SVGLineElement, LabelScene>('line.school-line')
+      .classed('is-search-match', sceneMatchesSchool);
+    this.anchorsLayer.selectAll<SVGCircleElement, LabelScene>('circle.school-anchor')
+      .classed('is-search-match', sceneMatchesSchool);
+    const labels = this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
+      .classed('is-search-match', sceneMatchesSchool);
+    labels.select<SVGTextElement>('text.school-label-title')
+      .classed('is-search-match', (scene) => (
+        !scene.card.region && matchedSchools.has(scene.card.schools[0])
+      ));
+    labels.selectAll<SVGTextElement, {
+      school: SchoolGroup;
+      column: number;
+      row: number;
+    }>('text.card-university')
+      .classed('is-search-match', (item) => matchedSchools.has(item.school));
+    labels.selectAll<SVGTextElement, { student: Student }>('text.student-name')
+      .classed('is-search-match', (item) => matchedStudents.has(item.student));
+
+    const foreignGroups = this.foreignLayer
+      .selectAll<SVGGElement, SchoolGroup>('g.foreign-school-group')
+      .classed('is-search-match', (school) => matchedSchools.has(school));
+    foreignGroups.select<SVGTextElement>('text.foreign-school-title')
+      .classed('is-search-match', (school) => matchedSchools.has(school));
+    foreignGroups.selectAll<SVGTextElement, Student>('text.student-name')
+      .classed('is-search-match', (student) => matchedStudents.has(student));
   }
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {
@@ -1008,6 +1057,8 @@ export class SchoolOverlay {
       });
       groups.exit().remove();
     });
+
+    this.applySearchHighlight();
 
     merged.interrupt()
       .transition()
