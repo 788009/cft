@@ -3,6 +3,7 @@ import {
   parseAdcodeMap,
   parseCsv,
   parseMiddleSchoolInfo,
+  parseTeachers,
   processStudentData,
 } from './parser';
 import type { ProcessedData, ProvinceAdcodeMap, CityAdcodeMap } from '@/types';
@@ -22,11 +23,12 @@ export function getDataAssetUrl(relativePath: string): string {
 
 export async function loadInitialData(): Promise<ProcessedData> {
   const basePath = defaultConfig.dataBasePath;
-  const [csvRes, provRes, cityRes, middleSchoolRes] = await Promise.all([
+  const [csvRes, provRes, cityRes, middleSchoolRes, teachersRes] = await Promise.all([
     fetchRequired(`${basePath}/data.csv`),
     fetchRequired(`${basePath}/province2adcode.json`),
     fetchRequired(`${basePath}/cities2adcode.json`),
     fetchRequired(`${basePath}/middle_school_info.json`),
+    fetchRequired(`${basePath}/teachers.json`),
   ]);
 
   const csvText = await csvRes.text();
@@ -36,9 +38,10 @@ export async function loadInitialData(): Promise<ProcessedData> {
     await middleSchoolRes.json(),
     'middle_school_info.json',
   );
+  const teachers = parseTeachers(await teachersRes.json(), 'teachers.json');
 
   const raw = parseCsv(csvText);
-  return processStudentData(raw, provMap, cityMap, middleSchool);
+  return processStudentData(raw, provMap, cityMap, middleSchool, teachers);
 }
 
 export async function loadGeoJSON(filename: string): Promise<any> {

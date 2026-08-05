@@ -1045,7 +1045,7 @@ test('reserves the configured corner for foreign schools and toggles it with map
 
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('opacity', '1');
-  await expect(panel).toHaveAttribute('data-corner', 'top-right');
+  await expect(panel).toHaveAttribute('data-corner', 'bottom-left');
   await expect.poll(async () => (
     await map.locator('g.school-overlay').getAttribute('data-label-scale') ===
     await panel.getAttribute('data-label-scale')
@@ -1076,8 +1076,8 @@ test('reserves the configured corner for foreign schools and toggles it with map
   });
   const viewport = page.viewportSize();
   if (!geometry || !viewport) throw new Error('缺少国外学校面板或视口');
-  expect(geometry.panelRect.y).toBe(20);
-  expect(geometry.panelRect.x + geometry.panelRect.width).toBe(viewport.width - 20);
+  expect(geometry.panelRect.x).toBe(20);
+  expect(geometry.panelRect.y + geometry.panelRect.height).toBe(viewport.height - 20);
   for (const [index, label] of geometry.labels.entries()) {
     const separated = (
       label.x + label.width + geometry.spacing <= geometry.panelRect.x ||
@@ -1106,6 +1106,69 @@ test('reserves the configured corner for foreign schools and toggles it with map
 
   await page.mouse.wheel(0, 2_400);
   await expect(panel).toBeVisible();
+});
+
+test('renders teachers in the configured corner without overlapping school cards', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const panel = map.locator('g.teacher-panel');
+  await centerDomesticSchools(page);
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveAttribute('opacity', '1');
+  await expect(panel).toHaveAttribute('data-corner', 'top-right');
+  await expect(panel.locator('text.teacher-panel-title')).toHaveText('教师');
+  const teacherData = await page.evaluate(async () => (
+    await fetch('./data/teachers.json').then((response) => response.json())
+  )) as Record<string, string | string[]>;
+  expect(await panel.locator('text.teacher-role').allTextContents()).toEqual(
+    Object.keys(teacherData),
+  );
+  expect(await panel.locator('text.teacher-name').allTextContents()).toEqual(
+    Object.values(teacherData).flatMap((names) => Array.isArray(names) ? names : [names]),
+  );
+
+  const geometry = await map.evaluate((container) => {
+    const panelNode = container.querySelector<SVGGElement>('g.teacher-panel');
+    if (!panelNode) return null;
+    const panelRect = {
+      x: Number(panelNode.dataset.panelX),
+      y: Number(panelNode.dataset.panelY),
+      width: Number(panelNode.dataset.panelWidth),
+      height: Number(panelNode.dataset.panelHeight),
+    };
+    const labels = Array.from(container.querySelectorAll<SVGGElement>('g.school-label')).map((label) => ({
+      x: Number(label.dataset.labelX),
+      y: Number(label.dataset.labelY),
+      width: Number(label.dataset.labelWidth),
+      height: Number(label.dataset.labelHeight),
+    }));
+    return {
+      panelRect,
+      labels,
+      spacing: Number(container.querySelector<SVGGElement>('g.school-overlay')?.dataset.labelSpacing),
+    };
+  });
+  const viewport = page.viewportSize();
+  if (!geometry || !viewport) throw new Error('缺少教师面板或视口');
+  expect(geometry.panelRect.y).toBe(20);
+  expect(geometry.panelRect.x + geometry.panelRect.width).toBe(viewport.width - 20);
+  for (const label of geometry.labels) {
+    const separated = (
+      label.x + label.width + geometry.spacing <= geometry.panelRect.x ||
+      geometry.panelRect.x + geometry.panelRect.width + geometry.spacing <= label.x ||
+      label.y + label.height + geometry.spacing <= geometry.panelRect.y ||
+      geometry.panelRect.y + geometry.panelRect.height + geometry.spacing <= label.y
+    );
+    expect(separated).toBe(true);
+  }
+
+  const svg = map.locator('svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -2_400);
+  await expect(panel).toHaveCount(0);
 });
 
 test('opens a static province detail scene with every indexed school', async ({ page }) => {

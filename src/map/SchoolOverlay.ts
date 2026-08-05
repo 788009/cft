@@ -4,7 +4,7 @@ import {
   type Selection,
   type ZoomTransform,
 } from 'd3';
-import { defaultConfig, type CardGroupingMode } from '@/config';
+import { defaultConfig, type CardGroupingMode, type Corner } from '@/config';
 import {
   calculateFittingLayout,
   isInside,
@@ -23,7 +23,13 @@ import {
   type InfoRectanglePlacement,
   type InfoRectangleResizeHandle,
 } from '@/map/InfoRectangle';
-import type { MiddleSchoolInfo, ProcessedData, SchoolGroup, Student } from '@/types';
+import type {
+  MiddleSchoolInfo,
+  ProcessedData,
+  SchoolGroup,
+  Student,
+  TeacherEntry,
+} from '@/types';
 import type { MapLevel } from './LevelManager';
 import {
   createRegionCardGroups,
@@ -86,6 +92,19 @@ interface ForeignPanelScene {
   baseSize: { width: number; height: number };
   scale: number;
   schools: SchoolGroup[];
+}
+
+interface TeacherPanelScene {
+  rect: Rect;
+  baseSize: { width: number; height: number };
+  scale: number;
+  teachers: TeacherEntry[];
+}
+
+interface TeacherPanelRow {
+  teacher: TeacherEntry;
+  nameLines: string[];
+  startLine: number;
 }
 
 export interface SchoolOverlayOptions {
@@ -188,14 +207,44 @@ function foreignPanelSize(schools: SchoolGroup[]): { width: number; height: numb
   };
 }
 
-function rectAtCorner(size: { width: number; height: number }, canvasRect: Rect): Rect {
-  const horizontal = defaultConfig.foreignCorner.endsWith('right')
+function rectAtCorner(
+  size: { width: number; height: number },
+  canvasRect: Rect,
+  corner: Corner,
+  inwardOffset = 0,
+): Rect {
+  const horizontal = corner.endsWith('right')
     ? canvasRect.x + canvasRect.width - size.width
     : canvasRect.x;
-  const vertical = defaultConfig.foreignCorner.startsWith('bottom')
-    ? canvasRect.y + canvasRect.height - size.height
-    : canvasRect.y;
+  const vertical = corner.startsWith('bottom')
+    ? canvasRect.y + canvasRect.height - size.height - inwardOffset
+    : canvasRect.y + inwardOffset;
   return { x: horizontal, y: vertical, ...size };
+}
+
+function rectAtCornerAvoidingObstacles(
+  size: { width: number; height: number },
+  canvasRect: Rect,
+  corner: Corner,
+  obstacles: Rect[],
+): Rect {
+  let inwardOffset = 0;
+  for (let index = 0; index <= obstacles.length; index += 1) {
+    const rect = rectAtCorner(size, canvasRect, corner, inwardOffset);
+    const overlapping = obstacles.filter((obstacle) => (
+      isOverlap(rect, obstacle, defaultConfig.labelSpacing)
+    ));
+    if (overlapping.length === 0) return rect;
+    inwardOffset = Math.max(
+      inwardOffset,
+      ...overlapping.map((obstacle) => (
+        corner.startsWith('bottom')
+          ? canvasRect.y + canvasRect.height - obstacle.y + defaultConfig.labelSpacing
+          : obstacle.y + obstacle.height - canvasRect.y + defaultConfig.labelSpacing
+      )),
+    );
+  }
+  return rectAtCorner(size, canvasRect, corner, inwardOffset);
 }
 
 function wrapTextByWidth(text: string, maximumWidth: number, fontSize: number): string[] {
@@ -212,6 +261,48 @@ function wrapTextByWidth(text: string, maximumWidth: number, fontSize: number): 
   }
   if (current) lines.push(current);
   return lines;
+}
+
+function teacherPanelLayout(teachers: TeacherEntry[]): {
+  width: number;
+  height: number;
+  roleWidth: number;
+  rows: TeacherPanelRow[];
+} {
+  const style = defaultConfig.labelStyle;
+  const title = '教师';
+  const roleWidth = Math.max(0, ...teachers.map((teacher) => (
+    textWidth(teacher.role, style.studentFontSize)
+  )));
+  const desiredContentWidth = Math.max(
+    textWidth(title, style.universityFontSize),
+    ...teachers.flatMap((teacher) => teacher.names.map((name) => (
+      roleWidth + style.studentColumnGap + textWidth(name, style.studentFontSize)
+    ))),
+  );
+  const width = Math.max(
+    style.minWidth,
+    Math.min(style.maxWidth, desiredContentWidth + style.paddingX * 2),
+  );
+  const nameWidth = Math.max(
+    style.studentFontSize,
+    width - style.paddingX * 2 - roleWidth - style.studentColumnGap,
+  );
+  let startLine = 0;
+  const rows = teachers.map((teacher) => {
+    const nameLines = teacher.names.flatMap((name) => (
+      wrapTextByWidth(name, nameWidth, style.studentFontSize)
+    ));
+    const row = { teacher, nameLines, startLine };
+    startLine += Math.max(1, nameLines.length);
+    return row;
+  });
+  return {
+    width,
+    height: style.paddingY * 2 + style.lineHeight * (1 + startLine),
+    roleWidth,
+    rows,
+  };
 }
 
 function middleSchoolCardSize(info: MiddleSchoolInfo): {
@@ -251,6 +342,7 @@ export class SchoolOverlay {
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly foreignLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly teacherLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly searchArrowsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly editorLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly editorBlocker: Selection<SVGRectElement, unknown, null, undefined>;
@@ -258,6 +350,7 @@ export class SchoolOverlay {
   private readonly editorHandles: Selection<SVGGElement, InfoRectangleResizeHandle, SVGGElement, unknown>;
   private domesticSchools: SchoolGroup[] = [];
   private foreignSchools: SchoolGroup[] = [];
+  private teachers: TeacherEntry[] = [];
   private middleSchool: MiddleSchoolInfo | null = null;
   private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
   private mapLevel: MapLevel = 'province';
@@ -335,6 +428,7 @@ export class SchoolOverlay {
       .style('display', this.showMiddleSchool ? '' : 'none')
       .style('pointer-events', 'none');
     this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
+    this.teacherLayer = this.root.append('g').attr('class', 'teachers');
     this.searchArrowsLayer = this.root.append('g').attr('class', 'search-arrows');
     this.editorLayer = this.root.append('g')
       .attr('class', 'info-rectangle-editor')
@@ -391,6 +485,7 @@ export class SchoolOverlay {
 
   public setData(data: ProcessedData): void {
     this.middleSchool = data.middleSchool;
+    this.teachers = data.teachers;
     this.setSchools(data.domesticSchools, data.foreignSchools);
   }
 
@@ -512,6 +607,7 @@ export class SchoolOverlay {
       this.labelsLayer,
       this.middleSchoolCardLayer,
       this.foreignLayer,
+      this.teacherLayer,
     ]) {
       layer.interrupt();
       if (active) {
@@ -530,6 +626,7 @@ export class SchoolOverlay {
       this.labelsLayer,
       this.middleSchoolCardLayer,
       this.foreignLayer,
+      this.teacherLayer,
     ]) {
       layer.selectAll('*').interrupt().remove();
     }
@@ -602,36 +699,82 @@ export class SchoolOverlay {
       cardsById.set(card.id, card);
     }
 
-    const showForeignSchools = (
-      this.foreignSchools.length > 0 &&
+    const allDomesticAnchorsInRange = (
       domesticAnchors.length === this.domesticSchools.length &&
       domesticAnchors.every((anchor) => containsPoint(infoRect, anchor))
     );
+    const showForeignSchools = (
+      this.foreignSchools.length > 0 && allDomesticAnchorsInRange
+    );
+    const showTeachers = this.teachers.length > 0 && allDomesticAnchorsInRange;
     if (domesticAnchors.length > 0) {
       this.root
         .attr('data-domestic-anchor-min-x', Math.min(...domesticAnchors.map((anchor) => anchor.x)))
         .attr('data-domestic-anchor-max-x', Math.max(...domesticAnchors.map((anchor) => anchor.x)))
         .attr('data-domestic-anchor-min-y', Math.min(...domesticAnchors.map((anchor) => anchor.y)))
         .attr('data-domestic-anchor-max-y', Math.max(...domesticAnchors.map((anchor) => anchor.y)))
-        .attr('data-all-domestic-in-range', String(showForeignSchools));
+        .attr('data-all-domestic-in-range', String(allDomesticAnchorsInRange));
     }
+    const baseTeacherSize = showTeachers
+      ? teacherPanelLayout(this.teachers)
+      : null;
+    const createTeacherScene = (scale: number): TeacherPanelScene | null => {
+      if (!baseTeacherSize) return null;
+      const scaledSize = {
+        width: baseTeacherSize.width * scale,
+        height: baseTeacherSize.height * scale,
+      };
+      return {
+        rect: rectAtCornerAvoidingObstacles(
+          scaledSize,
+          canvasRect,
+          defaultConfig.teacherCorner,
+          this.uiObstacles,
+        ),
+        baseSize: baseTeacherSize,
+        scale,
+        teachers: this.teachers,
+      };
+    };
     const baseForeignSize = showForeignSchools ? foreignPanelSize(this.foreignSchools) : null;
     const createForeignScene = (scale: number): ForeignPanelScene | null => {
       if (!baseForeignSize) return null;
+      const teacherScene = createTeacherScene(scale);
+      const scaledSize = {
+        width: baseForeignSize.width * scale,
+        height: baseForeignSize.height * scale,
+      };
       return {
-        rect: rectAtCorner({
-          width: baseForeignSize.width * scale,
-          height: baseForeignSize.height * scale,
-        }, canvasRect),
+        rect: rectAtCornerAvoidingObstacles(
+          scaledSize,
+          canvasRect,
+          defaultConfig.foreignCorner,
+          [
+            ...this.uiObstacles,
+            ...(teacherScene ? [teacherScene.rect] : []),
+          ],
+        ),
         baseSize: baseForeignSize,
         scale,
         schools: this.foreignSchools,
       };
     };
+    const getFixedScenes = (scale: number): {
+      teacher: TeacherPanelScene | null;
+      foreign: ForeignPanelScene | null;
+    } => ({
+      teacher: createTeacherScene(scale),
+      foreign: createForeignScene(scale),
+    });
+    const fullSizeTeacherScene = createTeacherScene(1);
     const fullSizeForeignScene = createForeignScene(1);
-    const historyConflictsWithForeignPanel = fullSizeForeignScene && Array.from(this.positionHistory.values())
-      .some((rect) => isOverlap(rect, fullSizeForeignScene.rect, defaultConfig.labelSpacing));
-    const layoutHistory = historyConflictsWithForeignPanel
+    const fullSizeFixedRects = [fullSizeTeacherScene, fullSizeForeignScene]
+      .flatMap((scene) => scene ? [scene.rect] : []);
+    const historyConflictsWithFixedPanel = Array.from(this.positionHistory.values())
+      .some((rect) => fullSizeFixedRects.some((fixedRect) => (
+        isOverlap(rect, fixedRect, defaultConfig.labelSpacing)
+      )));
+    const layoutHistory = historyConflictsWithFixedPanel
       ? new Map<string, Rect>()
       : this.positionHistory;
     const fittingLayout = calculateFittingLayout(baseVisibleInputs, layoutHistory, {
@@ -639,14 +782,15 @@ export class SchoolOverlay {
       scaleStep: defaultConfig.labelScale.step,
       optimize: this.enableLocalLayoutOptimization,
       getConfig: (scale) => {
-        const scene = createForeignScene(scale);
+        const fixedScenes = getFixedScenes(scale);
         return {
           canvasRect,
           infoRect,
           obstacles: [
             ...this.uiObstacles,
             ...searchArrowObstacles,
-            ...(scene ? [scene.rect] : []),
+            ...(fixedScenes.teacher ? [fixedScenes.teacher.rect] : []),
+            ...(fixedScenes.foreign ? [fixedScenes.foreign.rect] : []),
           ],
           spacing: defaultConfig.labelSpacing,
           lineFan: defaultConfig.lineFan,
@@ -654,13 +798,19 @@ export class SchoolOverlay {
         };
       },
       isScaleAllowed: (scale) => {
-        const scene = createForeignScene(scale);
-        return !scene || (
-          isInside(scene.rect, canvasRect) &&
-          !isOverlap(scene.rect, infoRect, 0)
+        const fixedScenes = getFixedScenes(scale);
+        const teacherAllowed = !fixedScenes.teacher || isInside(
+          fixedScenes.teacher.rect,
+          canvasRect,
         );
+        const foreignAllowed = !fixedScenes.foreign || (
+          isInside(fixedScenes.foreign.rect, canvasRect) &&
+          !isOverlap(fixedScenes.foreign.rect, infoRect, 0)
+        );
+        return teacherAllowed && foreignAllowed;
       },
     });
+    const teacherScene = createTeacherScene(fittingLayout.scale);
     const foreignScene = createForeignScene(fittingLayout.scale);
     const baseInputsById = new Map(baseVisibleInputs.map((input) => [input.id, input]));
 
@@ -704,6 +854,7 @@ export class SchoolOverlay {
     this.renderAnchors(scenes);
     this.renderLabels(scenes);
     this.renderMiddleSchoolCard(middleSchoolCardScene);
+    this.renderTeacherPanel(teacherScene);
     this.renderForeignPanel(foreignScene);
     this.renderSearchArrows(searchArrowGroups);
   }
@@ -1559,6 +1710,97 @@ export class SchoolOverlay {
       .classed('is-selected', (group) => (
         [...group.ids].sort().join('\u0000') === this.selectedArrowKey
       ));
+  }
+
+  private renderTeacherPanel(scene: TeacherPanelScene | null): void {
+    const style = defaultConfig.labelStyle;
+    const panels = this.teacherLayer
+      .selectAll<SVGGElement, TeacherPanelScene>('g.teacher-panel')
+      .data(scene ? [scene] : []);
+    const entered = panels.enter()
+      .append('g')
+      .attr('class', 'teacher-panel')
+      .attr('role', 'group')
+      .attr('aria-label', '教师信息')
+      .attr('opacity', 0)
+      .attr('transform', (panel) => (
+        `translate(${panel.rect.x},${panel.rect.y}) scale(${panel.scale})`
+      ))
+      .style('pointer-events', 'none');
+    entered.append('rect')
+      .attr('class', 'teacher-panel-background')
+      .attr('rx', 4)
+      .attr('vector-effect', 'non-scaling-stroke');
+    entered.append('text')
+      .attr('class', 'teacher-panel-title')
+      .attr('font-size', style.universityFontSize)
+      .attr('font-weight', 600)
+      .text('教师');
+    entered.append('g').attr('class', 'teacher-panel-rows');
+
+    const merged = entered.merge(panels)
+      .attr('data-corner', defaultConfig.teacherCorner)
+      .attr('data-panel-x', (panel) => panel.rect.x)
+      .attr('data-panel-y', (panel) => panel.rect.y)
+      .attr('data-panel-width', (panel) => panel.rect.width)
+      .attr('data-panel-height', (panel) => panel.rect.height)
+      .attr('data-label-scale', (panel) => panel.scale);
+    merged.select<SVGRectElement>('rect.teacher-panel-background')
+      .attr('width', (panel) => panel.baseSize.width)
+      .attr('height', (panel) => panel.baseSize.height);
+    merged.select<SVGTextElement>('text.teacher-panel-title')
+      .attr('x', style.paddingX)
+      .attr('y', style.paddingY + style.universityFontSize);
+
+    merged.each(function updateTeacherRows(panel) {
+      const layout = teacherPanelLayout(panel.teachers);
+      const rows = select(this).select<SVGGElement>('g.teacher-panel-rows')
+        .selectAll<SVGGElement, TeacherPanelRow>('g.teacher-panel-row')
+        .data(layout.rows, (row) => row.teacher.role);
+      const rowEnter = rows.enter()
+        .append('g')
+        .attr('class', 'teacher-panel-row');
+      rowEnter.append('text')
+        .attr('class', 'teacher-role')
+        .attr('font-size', style.studentFontSize);
+      rowEnter.append('g').attr('class', 'teacher-name-lines');
+      const rowMerged = rowEnter.merge(rows)
+        .attr('transform', (row) => (
+          `translate(${style.paddingX},${style.paddingY + style.lineHeight * (1 + row.startLine)})`
+        ));
+      rowMerged.select<SVGTextElement>('text.teacher-role')
+        .attr('y', style.studentFontSize)
+        .text((row) => row.teacher.role);
+      rowMerged.each(function updateTeacherNameLines(row) {
+        const names = select(this).select<SVGGElement>('g.teacher-name-lines')
+          .selectAll<SVGTextElement, string>('text.teacher-name')
+          .data(row.nameLines);
+        names.enter()
+          .append('text')
+          .attr('class', 'teacher-name')
+          .attr('font-size', style.studentFontSize)
+          .merge(names)
+          .attr('x', layout.roleWidth + style.studentColumnGap)
+          .attr('y', (_, index) => style.studentFontSize + index * style.lineHeight)
+          .text((line) => line);
+        names.exit().remove();
+      });
+      rows.exit().remove();
+    });
+
+    merged.interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('transform', (panel) => (
+        `translate(${panel.rect.x},${panel.rect.y}) scale(${panel.scale})`
+      ))
+      .attr('opacity', 1);
+    panels.exit()
+      .interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('opacity', 0)
+      .remove();
   }
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {

@@ -6,6 +6,7 @@ import type {
     CityAdcodeMap,
     ProcessedData,
     MiddleSchoolInfo,
+    TeacherEntry,
 } from '@/types';
 import { csvParseRows } from 'd3';
 
@@ -146,6 +147,30 @@ export function parseMiddleSchoolInfo(
   };
 }
 
+export function parseTeachers(value: unknown, resourceName: string): TeacherEntry[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new DataValidationError(`${resourceName} 必须是对象`);
+  }
+
+  const teachers: TeacherEntry[] = [];
+  const normalizedRoles = new Set<string>();
+  for (const [rawRole, rawNames] of Object.entries(value)) {
+    const role = rawRole.trim();
+    const names = (Array.isArray(rawNames) ? rawNames : [rawNames]).map((name) => (
+      typeof name === 'string' ? name.trim() : ''
+    ));
+    if (!role || names.length === 0 || names.some((name) => !name)) {
+      throw new DataValidationError(`${resourceName} 包含无效的教师信息: ${rawRole}`);
+    }
+    if (normalizedRoles.has(role)) {
+      throw new DataValidationError(`${resourceName} 包含重复的教师职务: ${role}`);
+    }
+    normalizedRoles.add(role);
+    teachers.push({ role, names });
+  }
+  return teachers;
+}
+
 function parseCoordinate(rawValue: string, field: 'lat' | 'lng', rowNumber: number): number | null {
   if (rawValue === '') return null;
 
@@ -171,6 +196,7 @@ export function processStudentData(
   provinceAdcodeMap: ProvinceAdcodeMap,
   cityAdcodeMap: CityAdcodeMap,
   middleSchool: MiddleSchoolInfo | null = null,
+  teachers: TeacherEntry[] = [],
 ): ProcessedData {
   const students: Student[] = rawStudents.map((raw, index) => {
     const rowNumber = index + 2;
@@ -273,6 +299,7 @@ export function processStudentData(
 
   return {
     middleSchool,
+    teachers,
     students,
     schools,
     domesticSchools,

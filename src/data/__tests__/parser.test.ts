@@ -4,6 +4,7 @@ import {
   parseAdcodeMap,
   parseCsv,
   parseMiddleSchoolInfo,
+  parseTeachers,
   processStudentData,
 } from '../parser';
 import type { RawStudent, ProvinceAdcodeMap, CityAdcodeMap } from '@/types';
@@ -72,6 +73,21 @@ line ""2""",30,120`;
       name: '测试中学', province: '测试省', city: '测试市', address: '测试路 1 号',
       lat: 30, lng: 120, title_img: '../title.png',
     }, 'middle_school_info.json')).toThrow(/相对路径/);
+  });
+
+  it('should validate and normalize teacher information', () => {
+    expect(parseTeachers({
+      ' 班主任 ': ' 黄B丽 ',
+      '段长': [' 唐C琛 ', '江X婷'],
+    }, 'teachers.json')).toEqual([
+      { role: '班主任', names: ['黄B丽'] },
+      { role: '段长', names: ['唐C琛', '江X婷'] },
+    ]);
+    expect(() => parseTeachers([], 'teachers.json')).toThrow(/必须是对象/);
+    expect(() => parseTeachers({ 数学: '' }, 'teachers.json')).toThrow(/无效的教师信息/);
+    expect(() => parseTeachers({ 数学: 1 }, 'teachers.json')).toThrow(/无效的教师信息/);
+    expect(() => parseTeachers({ 段长: [] }, 'teachers.json')).toThrow(/无效的教师信息/);
+    expect(() => parseTeachers({ 段长: ['教师', 1] }, 'teachers.json')).toThrow(/无效的教师信息/);
   });
 
   it('should group by university and sort students by no while preserving original order on ties', () => {

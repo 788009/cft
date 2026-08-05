@@ -47,11 +47,17 @@ export interface MiddleSchoolInfo {
   titleImgDark?: string;
 }
 
+export interface TeacherEntry {
+  role: string;
+  names: string[];
+}
+
 export type ProvinceAdcodeMap = Record<string, string>;
 export type CityAdcodeMap = Record<string, string>;
 
 export interface ProcessedData {
   middleSchool: MiddleSchoolInfo | null;
+  teachers: TeacherEntry[];
   students: Student[];
   schools: SchoolGroup[];
   domesticSchools: SchoolGroup[];

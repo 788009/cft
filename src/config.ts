@@ -76,6 +76,7 @@ export interface AppConfig {
   searchArrowMergeDistance: number;
   searchArrowHitSize: number;
   foreignCorner: Corner;
+  teacherCorner: Corner;
   settingsButtonCorner: Corner;
   mapInteractionMode: MapInteractionMode;
   cardGroupingMode: CardGroupingMode;
@@ -188,6 +189,7 @@ export const defaultConfig: AppConfig = {
   searchArrowMergeDistance: 48,
   searchArrowHitSize: 44,
   foreignCorner: 'bottom-left',
+  teacherCorner: 'top-right',
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'stable',
   cardGroupingMode: 'region',

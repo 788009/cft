@@ -15,6 +15,30 @@
   user-select: none;
 }
 
+.teacher-panel {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.teacher-panel-background {
+  fill: #f8fafc;
+  stroke: #94a3b8;
+  stroke-width: 1;
+}
+
+.teacher-panel-title {
+  fill: #0f172a;
+}
+
+.teacher-role {
+  fill: #64748b;
+}
+
+.teacher-name {
+  fill: #334155;
+}
+
 .student-name {
   cursor: pointer;
 }
@@ -335,15 +359,25 @@ text.is-search-match {
 }
 
 .dark .school-label-background,
-.dark .foreign-panel-background {
+.dark .foreign-panel-background,
+.dark .teacher-panel-background {
   fill: #111827;
   stroke: #64748b;
 }
 
 .dark .school-label-title,
 .dark .card-university,
-.dark .foreign-school-title {
+.dark .foreign-school-title,
+.dark .teacher-panel-title {
   fill: #f8fafc;
+}
+
+.dark .teacher-role {
+  fill: #94a3b8;
+}
+
+.dark .teacher-name {
+  fill: #cbd5e1;
 }
 
 .dark .student-name {
