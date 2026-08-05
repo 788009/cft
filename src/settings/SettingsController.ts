@@ -14,9 +14,30 @@ interface SettingOption<T extends string> {
   testId: string;
 }
 
+export interface SettingsState {
+  interactionMode: MapInteractionMode;
+  themeMode: ThemeMode;
+  cardGroupingMode: CardGroupingMode;
+  showRegionNames: boolean;
+  onlyShowRegionNamesWithSchools: boolean;
+  showInfoRectangle: boolean;
+  enableLocalLayoutOptimization: boolean;
+}
+
+export interface SettingsCallbacks {
+  onInteractionModeChange: (mode: MapInteractionMode) => void;
+  onThemeModeChange: (mode: ThemeMode) => void;
+  onCardGroupingModeChange: (mode: CardGroupingMode) => void;
+  onShowRegionNamesChange: (show: boolean) => void;
+  onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
+  onShowInfoRectangleChange: (show: boolean) => void;
+  onLocalLayoutOptimizationChange: (enabled: boolean) => void;
+  onEditInfoRectangle: () => void;
+}
+
 const MODE_OPTIONS: SettingOption<MapInteractionMode>[] = [
-  { value: 'stable', label: '保持显示', testId: 'interaction-mode-stable' },
-  { value: 'hide-and-reflow', label: '隐藏并重排', testId: 'interaction-mode-hide-and-reflow' },
+  { value: 'stable', label: '持续显示', testId: 'interaction-mode-stable' },
+  { value: 'hide-and-reflow', label: '操作时隐藏', testId: 'interaction-mode-hide-and-reflow' },
 ];
 
 const THEME_OPTIONS: SettingOption<ThemeMode>[] = [
@@ -59,38 +80,25 @@ export class SettingsController {
 
   constructor(
     container: HTMLElement,
-    initialMode: MapInteractionMode,
-    initialThemeMode: ThemeMode,
-    initialCardGroupingMode: CardGroupingMode,
-    initialShowRegionNames: boolean,
-    initialOnlyShowRegionNamesWithSchools: boolean,
-    initialShowInfoRectangle: boolean,
-    initialEnableLocalLayoutOptimization: boolean,
-    onModeChange: (mode: MapInteractionMode) => void,
-    onThemeModeChange: (mode: ThemeMode) => void,
-    onCardGroupingModeChange: (mode: CardGroupingMode) => void,
-    onShowRegionNamesChange: (show: boolean) => void,
-    onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void,
-    onShowInfoRectangleChange: (show: boolean) => void,
-    onLocalLayoutOptimizationChange: (enabled: boolean) => void,
-    onEditInfoRectangle: () => void,
+    initialState: SettingsState,
+    callbacks: SettingsCallbacks,
   ) {
     this.container = container;
-    this.mode = initialMode;
-    this.themeMode = initialThemeMode;
-    this.cardGroupingMode = initialCardGroupingMode;
-    this.showRegionNames = initialShowRegionNames;
-    this.onlyShowRegionNamesWithSchools = initialOnlyShowRegionNamesWithSchools;
-    this.showInfoRectangle = initialShowInfoRectangle;
-    this.enableLocalLayoutOptimization = initialEnableLocalLayoutOptimization;
-    this.onModeChange = onModeChange;
-    this.onThemeModeChange = onThemeModeChange;
-    this.onCardGroupingModeChange = onCardGroupingModeChange;
-    this.onShowRegionNamesChange = onShowRegionNamesChange;
-    this.onOnlyShowRegionNamesWithSchoolsChange = onOnlyShowRegionNamesWithSchoolsChange;
-    this.onShowInfoRectangleChange = onShowInfoRectangleChange;
-    this.onLocalLayoutOptimizationChange = onLocalLayoutOptimizationChange;
-    this.onEditInfoRectangle = onEditInfoRectangle;
+    this.mode = initialState.interactionMode;
+    this.themeMode = initialState.themeMode;
+    this.cardGroupingMode = initialState.cardGroupingMode;
+    this.showRegionNames = initialState.showRegionNames;
+    this.onlyShowRegionNamesWithSchools = initialState.onlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = initialState.showInfoRectangle;
+    this.enableLocalLayoutOptimization = initialState.enableLocalLayoutOptimization;
+    this.onModeChange = callbacks.onInteractionModeChange;
+    this.onThemeModeChange = callbacks.onThemeModeChange;
+    this.onCardGroupingModeChange = callbacks.onCardGroupingModeChange;
+    this.onShowRegionNamesChange = callbacks.onShowRegionNamesChange;
+    this.onOnlyShowRegionNamesWithSchoolsChange = callbacks.onOnlyShowRegionNamesWithSchoolsChange;
+    this.onShowInfoRectangleChange = callbacks.onShowInfoRectangleChange;
+    this.onLocalLayoutOptimizationChange = callbacks.onLocalLayoutOptimizationChange;
+    this.onEditInfoRectangle = callbacks.onEditInfoRectangle;
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
@@ -136,41 +144,58 @@ export class SettingsController {
       testId: 'settings-dialog',
       title: '设置',
       closeLabel: '关闭设置',
-      panelClass: 'relative flex max-h-[90vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900',
-      bodyClass: 'overflow-auto bg-white p-4 dark:bg-slate-900',
+      panelClass: 'relative flex max-h-[90vh] w-[min(94vw,520px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900',
+      bodyClass: 'overflow-auto bg-white dark:bg-slate-900',
       onClose: () => this.close(),
     });
 
     const content = document.createElement('div');
-    content.className = 'grid gap-5';
+    content.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     content.append(
-      this.createChoiceGroup(
-        '地图移动与缩放',
-        '地图移动与缩放时的卡片显示模式',
-        'interaction-mode',
-        MODE_OPTIONS,
-        (value) => this.selectMode(value),
-      ),
-      this.createChoiceGroup(
-        '外观',
-        '界面外观',
-        'theme-mode',
-        THEME_OPTIONS,
-        (value) => this.selectThemeMode(value),
-      ),
-      this.createChoiceGroup(
-        '卡片分类',
-        '学校信息卡片的分类方式',
-        'card-grouping-mode',
-        CARD_GROUPING_OPTIONS,
-        (value) => this.selectCardGroupingMode(value),
-      ),
-      this.createLayoutOptimizationSetting(),
-      this.createToggleSetting(),
+      this.createSection('外观', [
+        this.createChoiceGroup(
+          '主题',
+          '主题',
+          'theme-mode',
+          THEME_OPTIONS,
+          (value) => this.selectThemeMode(value),
+        ),
+      ]),
+      this.createSection('地图信息', [this.createMapInformationSettings()]),
+      this.createSection('信息卡片', [
+        this.createChoiceGroup(
+          '分组方式',
+          '信息卡片分组方式',
+          'card-grouping-mode',
+          CARD_GROUPING_OPTIONS,
+          (value) => this.selectCardGroupingMode(value),
+        ),
+        this.createChoiceGroup(
+          '移动和缩放',
+          '移动和缩放时的信息卡片显示方式',
+          'interaction-mode',
+          MODE_OPTIONS,
+          (value) => this.selectMode(value),
+        ),
+        this.createLayoutOptimizationSetting(),
+      ]),
     );
     this.shell.body.append(content);
     this.updateChoices();
   };
+
+  private createSection(title: string, settings: HTMLElement[]): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'px-5 py-4 sm:px-6';
+    const heading = document.createElement('h3');
+    heading.className = 'text-sm font-semibold text-slate-900 dark:text-slate-100';
+    heading.textContent = title;
+    const body = document.createElement('div');
+    body.className = 'mt-3 grid gap-4';
+    body.append(...settings);
+    section.append(heading, body);
+    return section;
+  }
 
   private createChoiceGroup<T extends string>(
     label: string,
@@ -181,10 +206,10 @@ export class SettingsController {
   ): HTMLFieldSetElement {
     const fieldset = document.createElement('fieldset');
     const legend = document.createElement('legend');
-    legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
+    legend.className = 'mb-2 text-sm text-slate-600 dark:text-slate-400';
     legend.textContent = label;
     const choices = document.createElement('div');
-    choices.className = 'grid overflow-hidden rounded-md border border-slate-300 dark:border-slate-700';
+    choices.className = 'grid overflow-hidden rounded-md border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-950';
     choices.style.gridTemplateColumns = `repeat(${options.length}, minmax(0, 1fr))`;
     choices.setAttribute('role', 'radiogroup');
     choices.setAttribute('aria-label', ariaLabel);
@@ -206,65 +231,61 @@ export class SettingsController {
     return fieldset;
   }
 
-  private createToggleSetting(): HTMLFieldSetElement {
-    const fieldset = document.createElement('fieldset');
-    const legend = document.createElement('legend');
-    legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
-    legend.textContent = '地图标注';
-
+  private createMapInformationSettings(): HTMLElement {
+    const settings = document.createElement('div');
+    settings.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     const toggle = this.createSwitch(
       'region-names-toggle',
-      '显示地区名称',
+      '地区名称',
       () => this.selectShowRegionNames(!this.showRegionNames),
     );
     const filterSetting = document.createElement('div');
     filterSetting.dataset.testid = 'region-names-school-filter-setting';
-    filterSetting.className = 'mt-2';
+    filterSetting.className = 'pl-4';
     filterSetting.append(this.createSwitch(
       'region-names-school-filter-toggle',
-      '仅显示有大学的地区',
+      '只显示有大学的地区',
       () => this.selectOnlyShowRegionNamesWithSchools(!this.onlyShowRegionNamesWithSchools),
     ));
     const infoRectangleSetting = document.createElement('div');
-    infoRectangleSetting.className = 'mt-2';
-    infoRectangleSetting.append(this.createSwitch(
+    infoRectangleSetting.className = 'flex min-h-14 items-center gap-3';
+    const infoRectangleToggle = this.createSwitch(
       'info-rectangle-toggle',
-      '显示信息范围框',
+      '信息范围',
       () => this.selectShowInfoRectangle(!this.showInfoRectangle),
-    ));
+    );
+    infoRectangleToggle.classList.add('min-w-0', 'flex-1');
     const editInfoRectangle = document.createElement('button');
     editInfoRectangle.type = 'button';
     editInfoRectangle.dataset.testid = 'edit-info-rectangle';
     editInfoRectangle.className = [
-      'mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-medium',
+      'min-h-11 shrink-0 rounded-md border border-slate-300 px-3 text-sm font-medium',
       'text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
       'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
       'dark:focus-visible:outline-teal-400',
     ].join(' ');
-    editInfoRectangle.textContent = '调整大小和位置';
+    editInfoRectangle.textContent = '调整范围';
     editInfoRectangle.addEventListener('click', () => {
       this.close();
       this.onEditInfoRectangle();
     });
-    fieldset.append(legend, toggle, filterSetting, infoRectangleSetting, editInfoRectangle);
-    return fieldset;
+    infoRectangleSetting.append(infoRectangleToggle, editInfoRectangle);
+    settings.append(toggle, filterSetting, infoRectangleSetting);
+    return settings;
   }
 
-  private createLayoutOptimizationSetting(): HTMLFieldSetElement {
-    const fieldset = document.createElement('fieldset');
-    const legend = document.createElement('legend');
-    legend.className = 'mb-2 text-sm font-medium text-slate-700 dark:text-slate-300';
-    legend.textContent = '排列优化';
+  private createLayoutOptimizationSetting(): HTMLElement {
+    const setting = document.createElement('div');
     const toggle = this.createSwitch(
       'local-layout-optimization-toggle',
-      '二阶段局部重排',
+      '优化卡片排列',
       () => this.selectLocalLayoutOptimization(!this.enableLocalLayoutOptimization),
     );
     const description = document.createElement('p');
-    description.className = 'mt-1 px-1 text-xs leading-5 text-slate-500 dark:text-slate-400';
-    description.textContent = '更好的排列效果，但可能对性能造成明显影响';
-    fieldset.append(legend, toggle, description);
-    return fieldset;
+    description.className = 'text-xs leading-5 text-slate-500 dark:text-slate-400';
+    description.textContent = '可能降低移动和缩放时的流畅度';
+    setting.append(toggle, description);
+    return setting;
   }
 
   private createSwitch(
@@ -276,9 +297,9 @@ export class SettingsController {
     toggle.type = 'button';
     toggle.dataset.testid = testId;
     toggle.className = [
-      'flex min-h-11 w-full items-center justify-between gap-3 rounded-md border px-3 text-sm font-medium',
-      'border-slate-300 bg-white text-slate-700 focus-visible:outline-2 focus-visible:outline-teal-700',
-      'dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:focus-visible:outline-teal-400',
+      'flex min-h-14 w-full items-center justify-between gap-3 text-left text-sm font-medium',
+      'text-slate-700 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:text-slate-300 dark:hover:text-white dark:focus-visible:outline-teal-400',
     ].join(' ');
     toggle.setAttribute('role', 'switch');
     toggle.setAttribute('aria-label', labelText);
@@ -349,12 +370,13 @@ export class SettingsController {
 
   private updateChoices(): void {
     if (!this.shell) return;
+    const selectedValues: Record<string, string> = {
+      'interaction-mode': this.mode,
+      'card-grouping-mode': this.cardGroupingMode,
+      'theme-mode': this.themeMode,
+    };
     for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
-      const selectedValue = choice.dataset.setting === 'interaction-mode'
-        ? this.mode
-        : choice.dataset.setting === 'card-grouping-mode'
-          ? this.cardGroupingMode
-          : this.themeMode;
+      const selectedValue = selectedValues[choice.dataset.setting ?? ''];
       const selected = choice.dataset.value === selectedValue;
       choice.setAttribute('aria-checked', String(selected));
       choice.classList.toggle('bg-teal-700', selected);

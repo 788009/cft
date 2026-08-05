@@ -76,43 +76,47 @@ export class AppController {
     );
     this.settings = new SettingsController(
       this.uiContainer,
-      this.interactionMode,
-      defaultConfig.themeMode,
-      this.cardGroupingMode,
-      this.showRegionNames,
-      this.onlyShowRegionNamesWithSchools,
-      this.showInfoRectangle,
-      this.enableLocalLayoutOptimization,
-      (mode) => {
-        this.interactionMode = mode;
-        this.renderer?.setInteractionMode(mode);
+      {
+        interactionMode: this.interactionMode,
+        themeMode: defaultConfig.themeMode,
+        cardGroupingMode: this.cardGroupingMode,
+        showRegionNames: this.showRegionNames,
+        onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
+        showInfoRectangle: this.showInfoRectangle,
+        enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
       },
-      (mode) => this.theme.setMode(mode),
-      (mode) => {
-        this.cardGroupingMode = mode;
-        this.renderer?.setCardGroupingMode(mode);
+      {
+        onInteractionModeChange: (mode) => {
+          this.interactionMode = mode;
+          this.renderer?.setInteractionMode(mode);
+        },
+        onThemeModeChange: (mode) => this.theme.setMode(mode),
+        onCardGroupingModeChange: (mode) => {
+          this.cardGroupingMode = mode;
+          this.renderer?.setCardGroupingMode(mode);
+        },
+        onShowRegionNamesChange: (show) => {
+          this.showRegionNames = show;
+          this.renderer?.setShowRegionNames(show);
+          this.details.setShowRegionNames(show);
+        },
+        onOnlyShowRegionNamesWithSchoolsChange: (only) => {
+          this.onlyShowRegionNamesWithSchools = only;
+          this.renderer?.setOnlyShowRegionNamesWithSchools(only);
+          this.details.setOnlyShowRegionNamesWithSchools(only);
+        },
+        onShowInfoRectangleChange: (show) => {
+          this.showInfoRectangle = show;
+          this.renderer?.setShowInfoRectangle(show);
+          this.details.setShowInfoRectangle(show);
+        },
+        onLocalLayoutOptimizationChange: (enabled) => {
+          this.enableLocalLayoutOptimization = enabled;
+          this.renderer?.setLocalLayoutOptimizationEnabled(enabled);
+          this.details.setLocalLayoutOptimizationEnabled(enabled);
+        },
+        onEditInfoRectangle: () => this.beginInfoRectangleEditing(),
       },
-      (show) => {
-        this.showRegionNames = show;
-        this.renderer?.setShowRegionNames(show);
-        this.details.setShowRegionNames(show);
-      },
-      (only) => {
-        this.onlyShowRegionNamesWithSchools = only;
-        this.renderer?.setOnlyShowRegionNamesWithSchools(only);
-        this.details.setOnlyShowRegionNamesWithSchools(only);
-      },
-      (show) => {
-        this.showInfoRectangle = show;
-        this.renderer?.setShowInfoRectangle(show);
-        this.details.setShowInfoRectangle(show);
-      },
-      (enabled) => {
-        this.enableLocalLayoutOptimization = enabled;
-        this.renderer?.setLocalLayoutOptimizationEnabled(enabled);
-        this.details.setLocalLayoutOptimizationEnabled(enabled);
-      },
-      () => this.beginInfoRectangleEditing(),
     );
   }
 

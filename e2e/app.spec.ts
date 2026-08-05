@@ -424,7 +424,7 @@ test('keeps local layout optimization optional and disabled by default', async (
 
   const toggle = page.getByTestId('local-layout-optimization-toggle');
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
-  await expect(page.getByText('更好的排列效果，但可能对性能造成明显影响', { exact: true })).toBeVisible();
+  await expect(page.getByText('可能降低移动和缩放时的流畅度', { exact: true })).toBeVisible();
   await toggle.click();
 
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
@@ -522,8 +522,8 @@ test('shows region names for the current map level and toggles them from setting
   const mainToggleBox = await toggle.boundingBox();
   const filterToggleBox = await filterToggle.boundingBox();
   if (!mainToggleBox || !filterToggleBox) throw new Error('地区名称开关没有可用尺寸');
-  expect(filterToggleBox.x).toBeCloseTo(mainToggleBox.x, 1);
-  expect(filterToggleBox.width).toBeCloseTo(mainToggleBox.width, 1);
+  expect(filterToggleBox.x).toBeGreaterThan(mainToggleBox.x);
+  expect(filterToggleBox.width).toBeLessThan(mainToggleBox.width);
   for (const switchControl of [toggle, filterToggle]) {
     const trackBox = await switchControl.locator('[data-toggle-track="true"]').boundingBox();
     const thumbBox = await switchControl.locator('[data-toggle-thumb="true"]').boundingBox();
