@@ -36,7 +36,7 @@ function getSafeLink(href: string): string | null {
 
 function appendSanitizedNode(source: Node, target: Node): void {
   if (source.nodeType === Node.TEXT_NODE) {
-    target.append(document.createTextNode(source.textContent ?? ''));
+    target.appendChild(document.createTextNode(source.textContent ?? ''));
     return;
   }
   if (!(source instanceof Element)) return;
@@ -55,7 +55,7 @@ function appendSanitizedNode(source: Node, target: Node): void {
         (nextTarget as HTMLAnchorElement).rel = 'noopener noreferrer';
       }
     }
-    target.append(nextTarget);
+    target.appendChild(nextTarget);
   }
   for (const child of source.childNodes) appendSanitizedNode(child, nextTarget);
 }
