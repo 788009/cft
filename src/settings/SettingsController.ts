@@ -7,6 +7,8 @@ import {
   type ThemeMode,
 } from '@/config';
 import { ModalShell } from '@/details/ModalShell';
+import { loadMessageHtml } from '@/data/fetcher';
+import { createSafeMessageContent } from './message';
 
 interface SettingOption<T extends string> {
   value: T;
@@ -81,6 +83,7 @@ export class SettingsController {
   private showMiddleSchool: boolean;
   private enableLocalLayoutOptimization: boolean;
   private shell: ModalShell | null = null;
+  private messageHtmlPromise: Promise<string> | null = null;
 
   constructor(
     container: HTMLElement,
@@ -185,10 +188,36 @@ export class SettingsController {
         ),
         this.createLayoutOptimizationSetting(),
       ]),
+      this.createMessageSection(),
     );
     this.shell.body.append(content);
     this.updateChoices();
   };
+
+  private createMessageSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.dataset.testid = 'settings-message';
+    section.className = 'settings-message px-5 py-4 sm:px-6';
+    section.setAttribute('aria-busy', 'true');
+    void this.loadMessage(section);
+    return section;
+  }
+
+  private async loadMessage(section: HTMLElement): Promise<void> {
+    try {
+      this.messageHtmlPromise ??= loadMessageHtml();
+      const html = await this.messageHtmlPromise;
+      section.replaceChildren(createSafeMessageContent(html));
+      section.setAttribute('aria-busy', 'false');
+    } catch {
+      this.messageHtmlPromise = null;
+      const error = document.createElement('p');
+      error.className = 'text-sm text-red-700 dark:text-red-400';
+      error.textContent = '内容加载失败';
+      section.replaceChildren(error);
+      section.setAttribute('aria-busy', 'false');
+    }
+  }
 
   private createSection(title: string, settings: HTMLElement[]): HTMLElement {
     const section = document.createElement('section');

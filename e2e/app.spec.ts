@@ -415,6 +415,29 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   await expect(labels.first()).toBeVisible();
 });
 
+test('shows the sanitized message as the final settings section', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('settings-button').click();
+
+  const message = page.getByTestId('settings-message');
+  await expect(message).toHaveAttribute('aria-busy', 'false');
+  await expect(message.locator('h3')).toHaveText('致谢');
+  await expect(message.locator('li')).not.toHaveCount(0);
+  expect(await message.evaluate((section) => section.parentElement?.lastElementChild === section))
+    .toBe(true);
+
+  const links = message.locator('a');
+  await expect(links).not.toHaveCount(0);
+  for (let index = 0; index < await links.count(); index += 1) {
+    const link = links.nth(index);
+    await expect(link).toHaveAttribute('href', /^https?:\/\//);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+  await expect(message.locator('script, style, iframe, object, embed, form, input, button'))
+    .toHaveCount(0);
+});
+
 test('keeps local layout optimization optional and disabled by default', async ({ page }) => {
   await page.goto('/');
 

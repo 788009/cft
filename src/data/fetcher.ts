@@ -21,6 +21,11 @@ export function getDataAssetUrl(relativePath: string): string {
   return `${defaultConfig.dataBasePath}/${encodedPath}`;
 }
 
+export async function loadMessageHtml(): Promise<string> {
+  const response = await fetchRequired(getDataAssetUrl('message.html'));
+  return response.text();
+}
+
 export async function loadInitialData(): Promise<ProcessedData> {
   const basePath = defaultConfig.dataBasePath;
   const [csvRes, provRes, cityRes, middleSchoolRes, teachersRes] = await Promise.all([

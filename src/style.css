@@ -39,6 +39,47 @@
   fill: #334155;
 }
 
+.settings-message {
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.settings-message h3,
+.settings-message h4 {
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.settings-message p,
+.settings-message ul,
+.settings-message ol {
+  margin-top: 0.5rem;
+}
+
+.settings-message ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.settings-message ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+
+.settings-message a {
+  color: #0f766e;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.settings-message a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
 .student-name {
   cursor: pointer;
 }
@@ -378,6 +419,23 @@ text.is-search-match {
 
 .dark .teacher-name {
   fill: #cbd5e1;
+}
+
+.dark .settings-message {
+  color: #cbd5e1;
+}
+
+.dark .settings-message h3,
+.dark .settings-message h4 {
+  color: #f8fafc;
+}
+
+.dark .settings-message a {
+  color: #5eead4;
+}
+
+.dark .settings-message a:focus-visible {
+  outline-color: #5eead4;
 }
 
 .dark .student-name {
