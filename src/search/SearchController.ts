@@ -91,7 +91,7 @@ export class SearchController {
       'placeholder:text-slate-400 disabled:cursor-wait dark:text-slate-100',
       'dark:placeholder:text-slate-500',
     ].join(' ');
-    this.input.placeholder = '搜索姓名、简称、大学或地区';
+    this.input.placeholder = '搜索姓名、首字母缩写、大学或地区';
     this.input.setAttribute('role', 'combobox');
     this.input.setAttribute('aria-autocomplete', 'list');
     this.input.setAttribute('aria-controls', 'search-suggestions');
@@ -429,7 +429,7 @@ export class SearchController {
   private getFieldLabel(suggestion: SearchSuggestion): string {
     const labels: Record<(typeof suggestion.fields)[number], string> = {
       name: '姓名',
-      short: '简称',
+      short: '缩写',
       university: '大学',
       province: '省份',
       city: '城市',
