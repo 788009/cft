@@ -286,7 +286,7 @@ export class SettingsController {
     infoRectangleSetting.className = 'flex min-h-14 items-center gap-3';
     const infoRectangleToggle = this.createSwitch(
       'info-rectangle-toggle',
-      '信息范围',
+      '信息范围框',
       () => this.selectShowInfoRectangle(!this.showInfoRectangle),
     );
     infoRectangleToggle.classList.add('min-w-0', 'flex-1');
