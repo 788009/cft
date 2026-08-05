@@ -431,6 +431,54 @@ test('keeps local layout optimization optional and disabled by default', async (
   await expect(overlay).toHaveAttribute('data-local-layout-optimization', 'true');
 });
 
+test('renders middle school connections and keeps them synchronized with map anchors', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  const marker = map.locator('g.middle-school-marker');
+  const lines = map.locator('line.middle-school-connection');
+  await expect(marker).toHaveCount(1);
+  await expect(marker).toBeVisible();
+  await expect(lines).not.toHaveCount(0);
+  const initialLineCount = await lines.count();
+  const widths = await lines.evaluateAll((nodes) => nodes.map((node) => ({
+    count: Number(node.getAttribute('data-student-count')),
+    width: Number(node.getAttribute('stroke-width')),
+  })).sort((a, b) => a.count - b.count));
+  for (let index = 1; index < widths.length; index += 1) {
+    expect(widths[index].width).toBeGreaterThanOrEqual(widths[index - 1].width);
+  }
+
+  await page.getByTestId('settings-button').click();
+  const toggle = page.getByTestId('middle-school-toggle');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('card-grouping-school').click();
+  await expect.poll(() => lines.count()).toBeGreaterThan(initialLineCount);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(map.locator('g.middle-school-connections')).toBeHidden();
+  await expect(map.locator('g.middle-school-markers')).toBeHidden();
+  await toggle.click();
+  await page.getByTestId('close-settings-dialog').click();
+
+  const firstLine = lines.first();
+  const endpointBeforeZoom = await firstLine.getAttribute('x2');
+  await zoomMapToScale(page, 3);
+  await expect.poll(() => firstLine.getAttribute('x2')).not.toBe(endpointBeforeZoom);
+
+  const svg = map.locator('svg');
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 10, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await overlay.getAttribute('data-middle-school-x')))
+    .toBeGreaterThan(box.width);
+  await expect(lines).not.toHaveCount(0);
+});
+
 test('keeps two-column region card text inside the card without overlaps', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();

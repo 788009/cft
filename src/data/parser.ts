@@ -5,6 +5,7 @@ import type {
     ProvinceAdcodeMap,
     CityAdcodeMap,
     ProcessedData,
+    MiddleSchoolInfo,
 } from '@/types';
 import { csvParseRows } from 'd3';
 
@@ -95,6 +96,33 @@ export function parseAdcodeMap(value: unknown, resourceName: string): Record<str
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
+export function parseMiddleSchoolInfo(
+  value: unknown,
+  resourceName: string,
+): MiddleSchoolInfo {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new DataValidationError(`${resourceName} 必须是对象`);
+  }
+  const record = value as Record<string, unknown>;
+  const textFields = ['name', 'province', 'city'] as const;
+  const textValues = Object.fromEntries(textFields.map((field) => {
+    const fieldValue = record[field];
+    if (typeof fieldValue !== 'string' || fieldValue.trim() === '') {
+      throw new DataValidationError(`${resourceName} 的 ${field} 无效`);
+    }
+    return [field, fieldValue.trim()];
+  })) as Pick<MiddleSchoolInfo, typeof textFields[number]>;
+  const lat = record.lat;
+  const lng = record.lng;
+  if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90) {
+    throw new DataValidationError(`${resourceName} 的 lat 无效`);
+  }
+  if (typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    throw new DataValidationError(`${resourceName} 的 lng 无效`);
+  }
+  return { ...textValues, lat, lng };
+}
+
 function parseCoordinate(rawValue: string, field: 'lat' | 'lng', rowNumber: number): number | null {
   if (rawValue === '') return null;
 
@@ -118,7 +146,8 @@ function appendIndex(index: Map<string, SchoolGroup[]>, key: string | null, scho
 export function processStudentData(
   rawStudents: RawStudent[],
   provinceAdcodeMap: ProvinceAdcodeMap,
-  cityAdcodeMap: CityAdcodeMap
+  cityAdcodeMap: CityAdcodeMap,
+  middleSchool: MiddleSchoolInfo | null = null,
 ): ProcessedData {
   const students: Student[] = rawStudents.map((raw, index) => {
     const rowNumber = index + 2;
@@ -220,6 +249,7 @@ export function processStudentData(
   }
 
   return {
+    middleSchool,
     students,
     schools,
     domesticSchools,

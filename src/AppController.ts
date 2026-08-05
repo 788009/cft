@@ -34,6 +34,7 @@ export class AppController {
   private showRegionNames = defaultConfig.showRegionNames;
   private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
   private showInfoRectangle = defaultConfig.showInfoRectangle;
+  private showMiddleSchool = defaultConfig.showMiddleSchool;
   private enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization;
   private infoRectanglePlacement = getDefaultInfoRectanglePlacement();
   private infoRectangleEditing = false;
@@ -84,6 +85,7 @@ export class AppController {
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,
+        showMiddleSchool: this.showMiddleSchool,
         enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
       },
       {
@@ -111,6 +113,10 @@ export class AppController {
           this.showInfoRectangle = show;
           this.renderer?.setShowInfoRectangle(show);
           this.details.setShowInfoRectangle(show);
+        },
+        onShowMiddleSchoolChange: (show) => {
+          this.showMiddleSchool = show;
+          this.renderer?.setShowMiddleSchool(show);
         },
         onLocalLayoutOptimizationChange: (enabled) => {
           this.enableLocalLayoutOptimization = enabled;
@@ -190,6 +196,7 @@ export class AppController {
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,
+        showMiddleSchool: this.showMiddleSchool,
         enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
         infoRectanglePlacement: this.infoRectanglePlacement,
         onInfoRectanglePlacementChange: (placement) => {

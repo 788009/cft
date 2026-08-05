@@ -21,6 +21,7 @@ export interface SettingsState {
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
   showInfoRectangle: boolean;
+  showMiddleSchool: boolean;
   enableLocalLayoutOptimization: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface SettingsCallbacks {
   onShowRegionNamesChange: (show: boolean) => void;
   onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   onShowInfoRectangleChange: (show: boolean) => void;
+  onShowMiddleSchoolChange: (show: boolean) => void;
   onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   onEditInfoRectangle: () => void;
 }
@@ -67,6 +69,7 @@ export class SettingsController {
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
   private readonly onShowInfoRectangleChange: (show: boolean) => void;
+  private readonly onShowMiddleSchoolChange: (show: boolean) => void;
   private readonly onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   private readonly onEditInfoRectangle: () => void;
   private mode: MapInteractionMode;
@@ -75,6 +78,7 @@ export class SettingsController {
   private showRegionNames: boolean;
   private onlyShowRegionNamesWithSchools: boolean;
   private showInfoRectangle: boolean;
+  private showMiddleSchool: boolean;
   private enableLocalLayoutOptimization: boolean;
   private shell: ModalShell | null = null;
 
@@ -90,6 +94,7 @@ export class SettingsController {
     this.showRegionNames = initialState.showRegionNames;
     this.onlyShowRegionNamesWithSchools = initialState.onlyShowRegionNamesWithSchools;
     this.showInfoRectangle = initialState.showInfoRectangle;
+    this.showMiddleSchool = initialState.showMiddleSchool;
     this.enableLocalLayoutOptimization = initialState.enableLocalLayoutOptimization;
     this.onModeChange = callbacks.onInteractionModeChange;
     this.onThemeModeChange = callbacks.onThemeModeChange;
@@ -97,6 +102,7 @@ export class SettingsController {
     this.onShowRegionNamesChange = callbacks.onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = callbacks.onOnlyShowRegionNamesWithSchoolsChange;
     this.onShowInfoRectangleChange = callbacks.onShowInfoRectangleChange;
+    this.onShowMiddleSchoolChange = callbacks.onShowMiddleSchoolChange;
     this.onLocalLayoutOptimizationChange = callbacks.onLocalLayoutOptimizationChange;
     this.onEditInfoRectangle = callbacks.onEditInfoRectangle;
     this.button = document.createElement('button');
@@ -270,7 +276,12 @@ export class SettingsController {
       this.onEditInfoRectangle();
     });
     infoRectangleSetting.append(infoRectangleToggle, editInfoRectangle);
-    settings.append(toggle, filterSetting, infoRectangleSetting);
+    const middleSchoolToggle = this.createSwitch(
+      'middle-school-toggle',
+      '中学标记与连线',
+      () => this.selectShowMiddleSchool(!this.showMiddleSchool),
+    );
+    settings.append(toggle, filterSetting, infoRectangleSetting, middleSchoolToggle);
     return settings;
   }
 
@@ -368,6 +379,13 @@ export class SettingsController {
     this.onLocalLayoutOptimizationChange(enabled);
   }
 
+  private selectShowMiddleSchool(show: boolean): void {
+    if (show === this.showMiddleSchool) return;
+    this.showMiddleSchool = show;
+    this.updateChoices();
+    this.onShowMiddleSchoolChange(show);
+  }
+
   private updateChoices(): void {
     if (!this.shell) return;
     const selectedValues: Record<string, string> = {
@@ -401,10 +419,14 @@ export class SettingsController {
     const localLayoutOptimizationToggle = this.shell.body.querySelector<HTMLButtonElement>(
       '[data-testid="local-layout-optimization-toggle"]',
     );
+    const middleSchoolToggle = this.shell.body.querySelector<HTMLButtonElement>(
+      '[data-testid="middle-school-toggle"]',
+    );
     this.updateSwitch(toggle, this.showRegionNames);
     this.updateSwitch(filterToggle, this.onlyShowRegionNamesWithSchools);
     this.updateSwitch(infoRectangleToggle, this.showInfoRectangle);
     this.updateSwitch(localLayoutOptimizationToggle, this.enableLocalLayoutOptimization);
+    this.updateSwitch(middleSchoolToggle, this.showMiddleSchool);
     filterSetting?.classList.toggle('hidden', !this.showRegionNames);
     filterSetting?.setAttribute('aria-hidden', String(!this.showRegionNames));
   }

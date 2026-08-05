@@ -83,7 +83,15 @@ export interface AppConfig {
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
   showInfoRectangle: boolean;
+  showMiddleSchool: boolean;
   enableLocalLayoutOptimization: boolean;
+  middleSchoolStyle: {
+    markerRadius: number;
+    haloRadius: number;
+    lineMinWidth: number;
+    lineMaxWidth: number;
+    lineLogarithmicStep: number;
+  };
   regionLabelFontSize: number;
   export: {
     defaultWidth: number;
@@ -179,7 +187,15 @@ export const defaultConfig: AppConfig = {
   showRegionNames: true,
   onlyShowRegionNamesWithSchools: true,
   showInfoRectangle: false,
+  showMiddleSchool: true,
   enableLocalLayoutOptimization: false,
+  middleSchoolStyle: {
+    markerRadius: 5,
+    haloRadius: 11,
+    lineMinWidth: 1.5,
+    lineMaxWidth: 6,
+    lineLogarithmicStep: 1.1,
+  },
   regionLabelFontSize: 11,
   export: {
     defaultWidth: 3840,

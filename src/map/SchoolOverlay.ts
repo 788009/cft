@@ -23,7 +23,7 @@ import {
   type InfoRectanglePlacement,
   type InfoRectangleResizeHandle,
 } from '@/map/InfoRectangle';
-import type { ProcessedData, SchoolGroup, Student } from '@/types';
+import type { MiddleSchoolInfo, ProcessedData, SchoolGroup, Student } from '@/types';
 import type { MapLevel } from './LevelManager';
 import {
   createRegionCardGroups,
@@ -33,12 +33,25 @@ import {
 } from './RegionCards';
 import type { SearchResult } from '@/logic/search';
 import { calculateArrows, type ArrowGroup } from '@/logic/arrow';
+import { calculateMiddleSchoolLineWidth } from './MiddleSchool';
 
 interface CardDatum {
   id: string;
   title: string;
   schools: SchoolGroup[];
   region: RegionCardGroup | null;
+}
+
+interface AnchoredCardDatum extends CardDatum {
+  longitude: number;
+  latitude: number;
+}
+
+interface MiddleSchoolConnection {
+  id: string;
+  anchor: Point;
+  middleSchoolAnchor: Point;
+  studentCount: number;
 }
 
 interface LabelScene {
@@ -64,6 +77,7 @@ export interface SchoolOverlayOptions {
   infoRectanglePlacement?: InfoRectanglePlacement;
   onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
   enableLocalLayoutOptimization?: boolean;
+  showMiddleSchool?: boolean;
 }
 
 function textWidth(text: string, fontSize: number): number {
@@ -171,6 +185,8 @@ export class SchoolOverlay {
   private readonly root: Selection<SVGGElement, unknown, null, undefined>;
   private readonly infoRectangle: Selection<SVGRectElement, unknown, null, undefined>;
   private readonly linesLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly middleSchoolLinesLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly middleSchoolMarkerLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly foreignLayer: Selection<SVGGElement, unknown, null, undefined>;
@@ -181,6 +197,7 @@ export class SchoolOverlay {
   private readonly editorHandles: Selection<SVGGElement, InfoRectangleResizeHandle, SVGGElement, unknown>;
   private domesticSchools: SchoolGroup[] = [];
   private foreignSchools: SchoolGroup[] = [];
+  private middleSchool: MiddleSchoolInfo | null = null;
   private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
   private mapLevel: MapLevel = 'province';
   private regionCenters = new Map<'province' | 'city', Map<string, RegionCenter>>([
@@ -193,6 +210,7 @@ export class SchoolOverlay {
   private infoRectanglePlacement: InfoRectanglePlacement;
   private showInfoRectangle: boolean;
   private enableLocalLayoutOptimization: boolean;
+  private showMiddleSchool: boolean;
   private infoRectangleEditing = false;
   private width = 0;
   private height = 0;
@@ -226,10 +244,12 @@ export class SchoolOverlay {
     this.showInfoRectangle = options.showInfoRectangle ?? defaultConfig.showInfoRectangle;
     this.enableLocalLayoutOptimization = options.enableLocalLayoutOptimization
       ?? defaultConfig.enableLocalLayoutOptimization;
+    this.showMiddleSchool = options.showMiddleSchool ?? defaultConfig.showMiddleSchool;
     this.root = svg.append('g')
       .attr('class', 'school-overlay')
       .attr('data-label-spacing', defaultConfig.labelSpacing)
       .attr('data-local-layout-optimization', String(this.enableLocalLayoutOptimization))
+      .attr('data-show-middle-school', String(this.showMiddleSchool))
       .style('pointer-events', 'none');
     this.infoRectangle = this.root.append('rect')
       .attr('class', 'info-rectangle')
@@ -239,9 +259,17 @@ export class SchoolOverlay {
       .attr('stroke-dasharray', '4 5')
       .attr('vector-effect', 'non-scaling-stroke')
       .style('pointer-events', 'none');
+    this.middleSchoolLinesLayer = this.root.append('g')
+      .attr('class', 'middle-school-connections')
+      .style('display', this.showMiddleSchool ? '' : 'none')
+      .style('pointer-events', 'none');
     this.linesLayer = this.root.append('g').attr('class', 'school-lines');
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
+    this.middleSchoolMarkerLayer = this.root.append('g')
+      .attr('class', 'middle-school-markers')
+      .style('display', this.showMiddleSchool ? '' : 'none')
+      .style('pointer-events', 'none');
     this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
     this.searchArrowsLayer = this.root.append('g').attr('class', 'search-arrows');
     this.editorLayer = this.root.append('g')
@@ -298,6 +326,7 @@ export class SchoolOverlay {
   }
 
   public setData(data: ProcessedData): void {
+    this.middleSchool = data.middleSchool;
     this.setSchools(data.domesticSchools, data.foreignSchools);
   }
 
@@ -319,6 +348,13 @@ export class SchoolOverlay {
   public setShowInfoRectangle(show: boolean): void {
     this.showInfoRectangle = show;
     this.syncInfoRectangleVisibility();
+  }
+
+  public setShowMiddleSchool(show: boolean): void {
+    this.showMiddleSchool = show;
+    this.root.attr('data-show-middle-school', String(show));
+    this.middleSchoolLinesLayer.style('display', show ? '' : 'none');
+    this.middleSchoolMarkerLayer.style('display', show ? '' : 'none');
   }
 
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
@@ -472,24 +508,8 @@ export class SchoolOverlay {
       domesticAnchors.push({ x, y });
     }
 
-    const cards: Array<CardDatum & { longitude: number; latitude: number }> = this.cardGroupingMode === 'region'
-      ? createRegionCardGroups(
-        this.domesticSchools,
-        this.mapLevel,
-        this.regionCenters.get(this.mapLevel === 'province' ? 'province' : 'city') ?? new Map(),
-      ).map((region) => ({
-        id: region.id,
-        title: region.name,
-        schools: region.schools,
-        region,
-        longitude: region.longitude,
-        latitude: region.latitude,
-      }))
-      : this.domesticSchools.flatMap((school) => (
-        school.lat === null || school.lng === null
-          ? []
-          : [{ ...schoolCard(school), longitude: school.lng, latitude: school.lat }]
-      ));
+    const cards = this.getAnchoredCards();
+    this.renderMiddleSchoolOverlay(projection, transform, cards);
 
     for (const card of cards) {
       const projected = getProjectedPoint(projection, card.latitude, card.longitude);
@@ -593,6 +613,18 @@ export class SchoolOverlay {
     this.renderLabels(scenes);
     this.renderForeignPanel(foreignScene);
     this.renderSearchArrows(searchArrowGroups);
+  }
+
+  public updateMiddleSchoolConnections(
+    width: number,
+    height: number,
+    projection: GeoProjection,
+    transform: ZoomTransform,
+  ): void {
+    this.width = width;
+    this.height = height;
+    this.currentInfoRect = getInfoRectangle(width, height, this.infoRectanglePlacement);
+    this.renderMiddleSchoolOverlay(projection, transform, this.getAnchoredCards());
   }
 
   public updateSearchArrows(
@@ -744,6 +776,118 @@ export class SchoolOverlay {
       x: (event.clientX - bounds.left) * this.width / bounds.width,
       y: (event.clientY - bounds.top) * this.height / bounds.height,
     };
+  }
+
+  private getAnchoredCards(): AnchoredCardDatum[] {
+    return this.cardGroupingMode === 'region'
+      ? createRegionCardGroups(
+        this.domesticSchools,
+        this.mapLevel,
+        this.regionCenters.get(this.mapLevel === 'province' ? 'province' : 'city') ?? new Map(),
+      ).map((region) => ({
+        id: region.id,
+        title: region.name,
+        schools: region.schools,
+        region,
+        longitude: region.longitude,
+        latitude: region.latitude,
+      }))
+      : this.domesticSchools.flatMap((school) => (
+        school.lat === null || school.lng === null
+          ? []
+          : [{ ...schoolCard(school), longitude: school.lng, latitude: school.lat }]
+      ));
+  }
+
+  private renderMiddleSchoolOverlay(
+    projection: GeoProjection,
+    transform: ZoomTransform,
+    cards: AnchoredCardDatum[],
+  ): void {
+    const middleSchool = this.middleSchool;
+    const projectedMiddleSchool = middleSchool
+      ? getProjectedPoint(projection, middleSchool.lat, middleSchool.lng)
+      : null;
+    if (!this.showMiddleSchool || !middleSchool || !projectedMiddleSchool) {
+      this.middleSchoolLinesLayer.selectAll('*').remove();
+      this.middleSchoolMarkerLayer.selectAll('*').remove();
+      return;
+    }
+
+    const [middleSchoolX, middleSchoolY] = transform.apply([
+      projectedMiddleSchool.x,
+      projectedMiddleSchool.y,
+    ]);
+    const middleSchoolAnchor = { x: middleSchoolX, y: middleSchoolY };
+    const connections = cards.flatMap((card): MiddleSchoolConnection[] => {
+      const projected = getProjectedPoint(projection, card.latitude, card.longitude);
+      if (!projected) return [];
+      const [x, y] = transform.apply([projected.x, projected.y]);
+      return [{
+        id: card.id,
+        anchor: { x, y },
+        middleSchoolAnchor,
+        studentCount: card.schools.reduce(
+          (count, school) => count + school.students.length,
+          0,
+        ),
+      }];
+    });
+    const lineStyle = defaultConfig.middleSchoolStyle;
+    this.middleSchoolLinesLayer
+      .selectAll<SVGLineElement, MiddleSchoolConnection>('line.middle-school-connection')
+      .data(connections, (connection) => connection.id)
+      .join('line')
+      .attr('class', 'middle-school-connection')
+      .attr('data-anchor-id', (connection) => connection.id)
+      .attr('data-student-count', (connection) => connection.studentCount)
+      .attr('x1', (connection) => connection.middleSchoolAnchor.x)
+      .attr('y1', (connection) => connection.middleSchoolAnchor.y)
+      .attr('x2', (connection) => connection.anchor.x)
+      .attr('y2', (connection) => connection.anchor.y)
+      .attr('stroke-width', (connection) => calculateMiddleSchoolLineWidth(
+        connection.studentCount,
+        {
+          minWidth: lineStyle.lineMinWidth,
+          maxWidth: lineStyle.lineMaxWidth,
+          logarithmicStep: lineStyle.lineLogarithmicStep,
+        },
+      ))
+      .attr('vector-effect', 'non-scaling-stroke');
+
+    const marker = this.middleSchoolMarkerLayer
+      .selectAll<SVGGElement, MiddleSchoolInfo>('g.middle-school-marker')
+      .data([middleSchool], (school) => school.name)
+      .join((enter) => {
+        const group = enter.append('g')
+          .attr('class', 'middle-school-marker')
+          .attr('role', 'img');
+        group.append('circle')
+          .attr('class', 'middle-school-marker-halo');
+        group.append('circle')
+          .attr('class', 'middle-school-marker-core');
+        group.append('rect')
+          .attr('class', 'middle-school-marker-center');
+        return group;
+      })
+      .attr('aria-label', (school) => `${school.name}位置`)
+      .attr('data-middle-school', (school) => school.name)
+      .attr('transform', `translate(${middleSchoolX},${middleSchoolY})`);
+    marker.select<SVGCircleElement>('circle.middle-school-marker-halo')
+      .attr('r', lineStyle.haloRadius);
+    marker.select<SVGCircleElement>('circle.middle-school-marker-core')
+      .attr('r', lineStyle.markerRadius);
+    const centerSize = lineStyle.markerRadius * 0.9;
+    marker.select<SVGRectElement>('rect.middle-school-marker-center')
+      .attr('x', -centerSize / 2)
+      .attr('y', -centerSize / 2)
+      .attr('width', centerSize)
+      .attr('height', centerSize)
+      .attr('transform', 'rotate(45)');
+    this.root
+      .attr('data-middle-school-x', middleSchoolX)
+      .attr('data-middle-school-y', middleSchoolY)
+      .attr('data-middle-school-connection-count', connections.length);
   }
 
   private renderLines(scenes: LabelScene[]): void {

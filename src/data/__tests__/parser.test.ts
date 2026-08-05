@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { DataValidationError, parseAdcodeMap, parseCsv, processStudentData } from '../parser';
+import {
+  DataValidationError,
+  parseAdcodeMap,
+  parseCsv,
+  parseMiddleSchoolInfo,
+  processStudentData,
+} from '../parser';
 import type { RawStudent, ProvinceAdcodeMap, CityAdcodeMap } from '@/types';
 import realCsv from '../../../data/data.csv?raw';
 import realProvinceMap from '../../../data/province2adcode.json?raw';
@@ -36,6 +42,25 @@ line ""2""",30,120`;
   it('should validate adcode maps', () => {
     expect(parseAdcodeMap({ Province: '110000' }, 'map.json')).toEqual({ Province: '110000' });
     expect(() => parseAdcodeMap({ Province: 'invalid' }, 'map.json')).toThrow(DataValidationError);
+  });
+
+  it('should validate and normalize middle school information', () => {
+    expect(parseMiddleSchoolInfo({
+      name: ' 测试中学 ',
+      province: '测试省',
+      city: '测试市',
+      lat: 30,
+      lng: 120,
+    }, 'middle_school_info.json')).toEqual({
+      name: '测试中学',
+      province: '测试省',
+      city: '测试市',
+      lat: 30,
+      lng: 120,
+    });
+    expect(() => parseMiddleSchoolInfo({
+      name: '测试中学', province: '测试省', city: '测试市', lat: 91, lng: 120,
+    }, 'middle_school_info.json')).toThrow(/lat 无效/);
   });
 
   it('should group by university and sort students by no while preserving original order on ties', () => {
