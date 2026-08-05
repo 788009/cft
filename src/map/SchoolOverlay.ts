@@ -201,6 +201,7 @@ export class SchoolOverlay {
   private touchSelectedSchoolId: string | null = null;
   private matchedStudents = new Set<Student>();
   private matchedSchools = new Set<SchoolGroup>();
+  private uiObstacles: Rect[] = [];
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
     if (event.pointerType !== 'touch') return;
     const target = event.target;
@@ -327,6 +328,25 @@ export class SchoolOverlay {
       .attr('data-search-student-count', this.matchedStudents.size)
       .attr('data-search-school-count', this.matchedSchools.size);
     this.applySearchHighlight();
+  }
+
+  public setUiObstacles(obstacles: Rect[]): boolean {
+    const next = obstacles.map((obstacle) => ({ ...obstacle }));
+    const unchanged = (
+      next.length === this.uiObstacles.length &&
+      next.every((obstacle, index) => {
+        const current = this.uiObstacles[index];
+        return (
+          current.x === obstacle.x &&
+          current.y === obstacle.y &&
+          current.width === obstacle.width &&
+          current.height === obstacle.height
+        );
+      })
+    );
+    if (unchanged) return false;
+    this.uiObstacles = next;
+    return true;
   }
 
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
@@ -498,7 +518,10 @@ export class SchoolOverlay {
         return {
           canvasRect,
           infoRect,
-          obstacles: scene ? [scene.rect] : [],
+          obstacles: [
+            ...this.uiObstacles,
+            ...(scene ? [scene.rect] : []),
+          ],
           spacing: defaultConfig.labelSpacing,
           lineFan: defaultConfig.lineFan,
           weights: defaultConfig.layoutWeights,

@@ -23,6 +23,7 @@ import {
 } from './RegionLabels';
 import { parseGeoJsonCenter, type RegionCenter } from './RegionCards';
 import type { SearchResult } from '@/logic/search';
+import type { Rect } from '@/logic/layout';
 
 interface RegionLabelDatum {
   feature: any;
@@ -177,6 +178,11 @@ export class MapRenderer {
 
   public setSearchResult(result: SearchResult): void {
     this.schoolOverlay.setSearchResult(result);
+  }
+
+  public setUiObstacles(obstacles: Rect[]): void {
+    if (!this.schoolOverlay.setUiObstacles(obstacles)) return;
+    this.updateSchoolOverlay();
   }
 
   public setCardGroupingMode(mode: CardGroupingMode): void {

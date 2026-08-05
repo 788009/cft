@@ -17,6 +17,7 @@ import {
 import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorController';
 import { SearchController } from '@/search/SearchController';
 import type { SearchResult } from '@/logic/search';
+import type { Rect } from '@/logic/layout';
 
 export class AppController {
   private readonly orientationGuide: HTMLElement;
@@ -43,6 +44,7 @@ export class AppController {
     matchedSchools: new Set(),
     targetSchools: new Set(),
   };
+  private searchObstacles: Rect[] = [];
   private renderVersion = 0;
   private started = false;
 
@@ -61,10 +63,17 @@ export class AppController {
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
-    this.search = new SearchController(this.uiContainer, (result) => {
-      this.searchResult = result;
-      this.renderer?.setSearchResult(result);
-    });
+    this.search = new SearchController(
+      this.uiContainer,
+      (result) => {
+        this.searchResult = result;
+        this.renderer?.setSearchResult(result);
+      },
+      (obstacles) => {
+        this.searchObstacles = obstacles;
+        this.renderer?.setUiObstacles(obstacles);
+      },
+    );
     this.settings = new SettingsController(
       this.uiContainer,
       this.interactionMode,
@@ -185,6 +194,7 @@ export class AppController {
       this.renderer = renderer;
       renderer.setData(data);
       renderer.setSearchResult(this.searchResult);
+      renderer.setUiObstacles(this.searchObstacles);
       this.search.setData(data.students, data.schools);
       await renderer.renderBaseMap();
 

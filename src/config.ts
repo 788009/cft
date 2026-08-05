@@ -64,6 +64,15 @@ export interface AppConfig {
     stability: number;
   };
   searchSuggestionLimit: number;
+  searchControl: {
+    corner: Corner;
+    desktopWidth: number;
+    compactBreakpoint: number;
+    compactExpandedWidth: number;
+    controlSize: number;
+    viewportMargin: number;
+    siblingGap: number;
+  };
   searchArrowMergeDistance: number;
   foreignCorner: Corner;
   settingsButtonCorner: Corner;
@@ -150,6 +159,15 @@ export const defaultConfig: AppConfig = {
     stability: 0,
   },
   searchSuggestionLimit: 8,
+  searchControl: {
+    corner: 'top-left',
+    desktopWidth: 448,
+    compactBreakpoint: 960,
+    compactExpandedWidth: 320,
+    controlSize: 44,
+    viewportMargin: 12,
+    siblingGap: 8,
+  },
   searchArrowMergeDistance: 48,
   foreignCorner: 'top-right',
   settingsButtonCorner: 'top-left',

@@ -29,6 +29,7 @@ test('updates strict school search highlights without moving the map', async ({ 
   const overlay = map.locator('g.school-overlay');
   const mapGeometry = map.locator('g.map-geometry');
   const input = page.getByTestId('search-input');
+  if (await input.isHidden()) await page.getByTestId('search-toggle').click();
   const schoolTitle = map.locator('text.card-university, text.school-label-title').first();
   await expect(schoolTitle).toBeVisible();
   await expect(input).toBeEnabled();
@@ -58,6 +59,7 @@ test('selects suggestions with the keyboard and highlights matching students', a
   const map = page.getByTestId('map-container');
   const overlay = map.locator('g.school-overlay');
   const input = page.getByTestId('search-input');
+  if (await input.isHidden()) await page.getByTestId('search-toggle').click();
   const schoolTitle = map.locator('text.card-university, text.school-label-title').first();
   await expect(schoolTitle).toBeVisible();
   const school = (await schoolTitle.textContent())?.trim();
@@ -82,6 +84,61 @@ test('selects suggestions with the keyboard and highlights matching students', a
   await expect(overlay).not.toHaveAttribute('data-search-student-count', '0');
   await expect(map.locator('text.student-name.is-search-match').first()).toBeVisible();
   await expect(overlay).toHaveAttribute('data-search-school-count', '0');
+});
+
+test('places search after controls in the same corner and reserves its map area', async ({ page }) => {
+  await page.goto('/');
+
+  const search = page.getByTestId('search-control');
+  const settings = page.getByTestId('settings-button');
+  const searchButton = page.getByTestId('search-toggle');
+  await expect(search).toHaveAttribute('data-corner', 'top-left');
+  const compact = await search.getAttribute('data-compact') === 'true';
+  const searchBox = await (compact ? searchButton : page.getByTestId('search-field')).boundingBox();
+  const settingsBox = await settings.boundingBox();
+  if (!searchBox || !settingsBox) throw new Error('搜索或设置控件没有可用尺寸');
+  expect(searchBox.x).toBeGreaterThanOrEqual(settingsBox.x + settingsBox.width);
+
+  const labels = page.getByTestId('map-container').locator('g.school-label[opacity="1"]');
+  await expect(labels).not.toHaveCount(0);
+  const overlaps = await labels.evaluateAll((nodes, obstacle) => nodes.filter((node) => {
+    const rect = node.getBoundingClientRect();
+    return !(
+      rect.right <= obstacle.x ||
+      rect.left >= obstacle.x + obstacle.width ||
+      rect.bottom <= obstacle.y ||
+      rect.top >= obstacle.y + obstacle.height
+    );
+  }).length, searchBox);
+  expect(overlaps).toBe(0);
+});
+
+test('expands and collapses the compact search control toward the viewport center', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile-landscape-chromium', '仅验证小屏搜索控件');
+  await page.goto('/');
+
+  const search = page.getByTestId('search-control');
+  const toggle = page.getByTestId('search-toggle');
+  const input = page.getByTestId('search-input');
+  await expect(search).toHaveAttribute('data-compact', 'true');
+  await expect(search).toHaveAttribute('data-expanded', 'false');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(input).toBeHidden();
+  const collapsedButtonBox = await toggle.boundingBox();
+
+  await toggle.click();
+  await expect(search).toHaveAttribute('data-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(input).toBeVisible();
+  const expandedButtonBox = await toggle.boundingBox();
+  if (!collapsedButtonBox || !expandedButtonBox) throw new Error('搜索按钮没有可用尺寸');
+  expect(expandedButtonBox.x).toBeCloseTo(collapsedButtonBox.x, 0);
+
+  await toggle.click();
+  await expect(search).toHaveAttribute('data-expanded', 'false');
+  await expect(input).toBeHidden();
 });
 
 test('centers domestic school extremes and fits their dominant span to the information range', async ({ page }) => {
