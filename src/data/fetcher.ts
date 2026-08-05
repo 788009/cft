@@ -15,6 +15,11 @@ async function fetchRequired(path: string): Promise<Response> {
   return response;
 }
 
+export function getDataAssetUrl(relativePath: string): string {
+  const encodedPath = relativePath.split('/').map(encodeURIComponent).join('/');
+  return `${defaultConfig.dataBasePath}/${encodedPath}`;
+}
+
 export async function loadInitialData(): Promise<ProcessedData> {
   const basePath = defaultConfig.dataBasePath;
   const [csvRes, provRes, cityRes, middleSchoolRes] = await Promise.all([

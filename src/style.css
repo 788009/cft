@@ -84,6 +84,44 @@
   fill: #ffffff;
 }
 
+.middle-school-card {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  letter-spacing: 0;
+  user-select: none;
+}
+
+.middle-school-card-line {
+  stroke: #dc2626;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.middle-school-card-background {
+  fill: #ffffff;
+  stroke: #dc2626;
+  stroke-width: 2;
+}
+
+.middle-school-card-name {
+  fill: #111827;
+}
+
+.middle-school-card-address {
+  fill: #475569;
+}
+
+.middle-school-title-image-dark {
+  display: none;
+}
+
+.middle-school-card.has-title-image .middle-school-card-name {
+  display: none;
+}
+
+.middle-school-card.has-title-image.is-title-light-failed .middle-school-card-name {
+  display: block;
+}
+
 .dark .middle-school-connection {
   stroke: #f87171;
 }
@@ -100,6 +138,39 @@
 .dark .middle-school-marker-core {
   fill: #ef4444;
   stroke: #fef2f2;
+}
+
+.dark .middle-school-card-line {
+  stroke: #f87171;
+}
+
+.dark .middle-school-card-background {
+  fill: #111827;
+  stroke: #f87171;
+}
+
+.dark .middle-school-card-name {
+  fill: #f8fafc;
+}
+
+.dark .middle-school-card-address {
+  fill: #cbd5e1;
+}
+
+.dark .middle-school-card.has-dark-title-image .middle-school-title-image-light {
+  display: none;
+}
+
+.dark .middle-school-card.has-dark-title-image .middle-school-title-image-dark {
+  display: block;
+}
+
+.dark .middle-school-card.has-dark-title-image.is-title-light-failed:not(.is-title-dark-failed) .middle-school-card-name {
+  display: none;
+}
+
+.dark .middle-school-card.has-dark-title-image.is-title-dark-failed .middle-school-card-name {
+  display: block;
 }
 
 .school-line.is-highlighted {

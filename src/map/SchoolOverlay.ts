@@ -34,6 +34,9 @@ import {
 import type { SearchResult } from '@/logic/search';
 import { calculateArrows, type ArrowGroup } from '@/logic/arrow';
 import { calculateMiddleSchoolLineWidth } from './MiddleSchool';
+import { getDataAssetUrl } from '@/data/fetcher';
+
+const MIDDLE_SCHOOL_CARD_ID = 'middle-school-card';
 
 interface CardDatum {
   id: string;
@@ -52,6 +55,20 @@ interface MiddleSchoolConnection {
   anchor: Point;
   middleSchoolAnchor: Point;
   studentCount: number;
+}
+
+interface MiddleSchoolCardScene {
+  info: MiddleSchoolInfo;
+  anchor: Point;
+  connection: Point;
+  rect: Rect;
+  baseSize: { width: number; height: number };
+  scale: number;
+}
+
+interface MiddleSchoolTitleImage {
+  kind: 'light' | 'dark';
+  url: string;
 }
 
 interface LabelScene {
@@ -181,11 +198,55 @@ function rectAtCorner(size: { width: number; height: number }, canvasRect: Rect)
   return { x: horizontal, y: vertical, ...size };
 }
 
+function wrapTextByWidth(text: string, maximumWidth: number, fontSize: number): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const character of Array.from(text)) {
+    const candidate = `${current}${character}`;
+    if (current && textWidth(candidate, fontSize) > maximumWidth) {
+      lines.push(current);
+      current = character;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function middleSchoolCardSize(info: MiddleSchoolInfo): {
+  width: number;
+  height: number;
+  addressLines: string[];
+  titleHeight: number;
+} {
+  const cardStyle = defaultConfig.middleSchoolStyle;
+  const labelStyle = defaultConfig.labelStyle;
+  const width = cardStyle.cardMaxWidth;
+  const contentWidth = width - cardStyle.cardPaddingX * 2;
+  const addressLines = wrapTextByWidth(
+    info.address,
+    contentWidth,
+    labelStyle.studentFontSize,
+  );
+  const titleHeight = info.titleImg
+    ? cardStyle.titleImageMaxHeight
+    : labelStyle.lineHeight;
+  return {
+    width,
+    height: cardStyle.cardPaddingY * 2 + titleHeight + cardStyle.cardContentGap +
+      Math.max(1, addressLines.length) * labelStyle.lineHeight,
+    addressLines,
+    titleHeight,
+  };
+}
+
 export class SchoolOverlay {
   private readonly root: Selection<SVGGElement, unknown, null, undefined>;
   private readonly infoRectangle: Selection<SVGRectElement, unknown, null, undefined>;
   private readonly linesLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly middleSchoolLinesLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly middleSchoolCardLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly middleSchoolMarkerLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
@@ -266,6 +327,9 @@ export class SchoolOverlay {
     this.linesLayer = this.root.append('g').attr('class', 'school-lines');
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
+    this.middleSchoolCardLayer = this.root.append('g')
+      .attr('class', 'middle-school-card-layer')
+      .style('display', this.showMiddleSchool ? '' : 'none');
     this.middleSchoolMarkerLayer = this.root.append('g')
       .attr('class', 'middle-school-markers')
       .style('display', this.showMiddleSchool ? '' : 'none')
@@ -354,6 +418,7 @@ export class SchoolOverlay {
     this.showMiddleSchool = show;
     this.root.attr('data-show-middle-school', String(show));
     this.middleSchoolLinesLayer.style('display', show ? '' : 'none');
+    this.middleSchoolCardLayer.style('display', show ? '' : 'none');
     this.middleSchoolMarkerLayer.style('display', show ? '' : 'none');
   }
 
@@ -441,7 +506,13 @@ export class SchoolOverlay {
 
   public setInteractionActive(active: boolean): void {
     this.root.attr('data-interacting', String(active));
-    for (const layer of [this.linesLayer, this.anchorsLayer, this.labelsLayer, this.foreignLayer]) {
+    for (const layer of [
+      this.linesLayer,
+      this.anchorsLayer,
+      this.labelsLayer,
+      this.middleSchoolCardLayer,
+      this.foreignLayer,
+    ]) {
       layer.interrupt();
       if (active) {
         layer.style('visibility', 'hidden');
@@ -453,7 +524,13 @@ export class SchoolOverlay {
 
   public resetLayout(): void {
     this.positionHistory.clear();
-    for (const layer of [this.linesLayer, this.anchorsLayer, this.labelsLayer, this.foreignLayer]) {
+    for (const layer of [
+      this.linesLayer,
+      this.anchorsLayer,
+      this.labelsLayer,
+      this.middleSchoolCardLayer,
+      this.foreignLayer,
+    ]) {
       layer.selectAll('*').interrupt().remove();
     }
   }
@@ -510,6 +587,8 @@ export class SchoolOverlay {
 
     const cards = this.getAnchoredCards();
     this.renderMiddleSchoolOverlay(projection, transform, cards);
+    const middleSchoolCardInput = this.getMiddleSchoolCardInput(projection, transform);
+    if (middleSchoolCardInput) baseVisibleInputs.push(middleSchoolCardInput);
 
     for (const card of cards) {
       const projected = getProjectedPoint(projection, card.latitude, card.longitude);
@@ -586,12 +665,25 @@ export class SchoolOverlay {
     const baseInputsById = new Map(baseVisibleInputs.map((input) => [input.id, input]));
 
     const scenes: LabelScene[] = [];
+    let middleSchoolCardScene: MiddleSchoolCardScene | null = null;
     for (const input of fittingLayout.inputs) {
       const rect = fittingLayout.layout.get(input.id);
-      const card = cardsById.get(input.id);
       const baseInput = baseInputsById.get(input.id);
-      if (!rect || !card || !baseInput) continue;
+      if (!rect || !baseInput) continue;
       this.positionHistory.set(input.id, rect);
+      if (input.id === MIDDLE_SCHOOL_CARD_ID && this.middleSchool) {
+        middleSchoolCardScene = {
+          info: this.middleSchool,
+          anchor: input.anchor,
+          connection: fittingLayout.connections.get(input.id) ?? input.anchor,
+          rect,
+          baseSize: { width: baseInput.width, height: baseInput.height },
+          scale: fittingLayout.scale,
+        };
+        continue;
+      }
+      const card = cardsById.get(input.id);
+      if (!card) continue;
       scenes.push({
         id: input.id,
         card,
@@ -611,6 +703,7 @@ export class SchoolOverlay {
     this.renderLines(scenes);
     this.renderAnchors(scenes);
     this.renderLabels(scenes);
+    this.renderMiddleSchoolCard(middleSchoolCardScene);
     this.renderForeignPanel(foreignScene);
     this.renderSearchArrows(searchArrowGroups);
   }
@@ -799,6 +892,27 @@ export class SchoolOverlay {
       ));
   }
 
+  private getMiddleSchoolCardInput(
+    projection: GeoProjection,
+    transform: ZoomTransform,
+  ): LayoutInput | null {
+    if (!this.showMiddleSchool || !this.middleSchool) return null;
+    const projected = getProjectedPoint(
+      projection,
+      this.middleSchool.lat,
+      this.middleSchool.lng,
+    );
+    if (!projected) return null;
+    const [x, y] = transform.apply([projected.x, projected.y]);
+    const size = middleSchoolCardSize(this.middleSchool);
+    return {
+      id: MIDDLE_SCHOOL_CARD_ID,
+      anchor: { x, y },
+      width: size.width,
+      height: size.height,
+    };
+  }
+
   private renderMiddleSchoolOverlay(
     projection: GeoProjection,
     transform: ZoomTransform,
@@ -924,6 +1038,127 @@ export class SchoolOverlay {
       .attr('data-middle-school-x', middleSchoolX)
       .attr('data-middle-school-y', middleSchoolY)
       .attr('data-middle-school-connection-count', connections.length);
+  }
+
+  private renderMiddleSchoolCard(scene: MiddleSchoolCardScene | null): void {
+    const cardStyle = defaultConfig.middleSchoolStyle;
+    const labelStyle = defaultConfig.labelStyle;
+    const cards = this.middleSchoolCardLayer
+      .selectAll<SVGGElement, MiddleSchoolCardScene>('g.middle-school-card')
+      .data(scene ? [scene] : [], (cardScene) => cardScene.info.name);
+    const entered = cards.enter()
+      .append('g')
+      .attr('class', 'middle-school-card')
+      .attr('opacity', 0)
+      .style('pointer-events', 'none');
+    entered.append('line')
+      .attr('class', 'middle-school-card-line')
+      .attr('vector-effect', 'non-scaling-stroke');
+    entered.append('rect')
+      .attr('class', 'middle-school-card-background')
+      .attr('rx', 4)
+      .attr('vector-effect', 'non-scaling-stroke');
+    entered.append('text')
+      .attr('class', 'middle-school-card-name')
+      .attr('font-size', labelStyle.universityFontSize)
+      .attr('font-weight', 600);
+    entered.append('g').attr('class', 'middle-school-title-images');
+    entered.append('g').attr('class', 'middle-school-card-address-lines');
+
+    const merged = entered.merge(cards)
+      .attr('data-middle-school', (cardScene) => cardScene.info.name)
+      .attr('data-card-x', (cardScene) => cardScene.rect.x)
+      .attr('data-card-y', (cardScene) => cardScene.rect.y)
+      .attr('data-card-width', (cardScene) => cardScene.rect.width)
+      .attr('data-card-height', (cardScene) => cardScene.rect.height)
+      .attr('data-card-scale', (cardScene) => cardScene.scale)
+      .classed('has-title-image', (cardScene) => Boolean(cardScene.info.titleImg))
+      .classed('has-dark-title-image', (cardScene) => Boolean(cardScene.info.titleImgDark));
+
+    merged.select<SVGLineElement>('line.middle-school-card-line')
+      .attr('x1', (cardScene) => (
+        (cardScene.anchor.x - cardScene.rect.x) / cardScene.scale
+      ))
+      .attr('y1', (cardScene) => (
+        (cardScene.anchor.y - cardScene.rect.y) / cardScene.scale
+      ))
+      .attr('x2', (cardScene) => (
+        (cardScene.connection.x - cardScene.rect.x) / cardScene.scale
+      ))
+      .attr('y2', (cardScene) => (
+        (cardScene.connection.y - cardScene.rect.y) / cardScene.scale
+      ));
+    merged.select<SVGRectElement>('rect.middle-school-card-background')
+      .attr('width', (cardScene) => cardScene.baseSize.width)
+      .attr('height', (cardScene) => cardScene.baseSize.height);
+    merged.select<SVGTextElement>('text.middle-school-card-name')
+      .attr('x', cardStyle.cardPaddingX)
+      .attr('y', cardStyle.cardPaddingY + labelStyle.universityFontSize)
+      .text((cardScene) => cardScene.info.name);
+
+    merged.each(function updateMiddleSchoolCard(cardScene) {
+      const size = middleSchoolCardSize(cardScene.info);
+      const titleImages: MiddleSchoolTitleImage[] = [
+        ...(cardScene.info.titleImg
+          ? [{ kind: 'light' as const, url: getDataAssetUrl(cardScene.info.titleImg) }]
+          : []),
+        ...(cardScene.info.titleImgDark
+          ? [{ kind: 'dark' as const, url: getDataAssetUrl(cardScene.info.titleImgDark) }]
+          : []),
+      ];
+      const group = select(this);
+      const images = group.select<SVGGElement>('g.middle-school-title-images')
+        .selectAll<SVGImageElement, MiddleSchoolTitleImage>('image.middle-school-title-image')
+        .data(titleImages, (image) => image.kind);
+      images.enter()
+        .append('image')
+        .attr('class', (image) => `middle-school-title-image middle-school-title-image-${image.kind}`)
+        .attr('preserveAspectRatio', 'xMinYMid meet')
+        .on('error', function handleTitleImageError(_event, image) {
+          select(this).style('display', 'none');
+          group.classed(`is-title-${image.kind}-failed`, true);
+        })
+        .merge(images)
+        .attr('href', (image) => image.url)
+        .attr('x', cardStyle.cardPaddingX)
+        .attr('y', cardStyle.cardPaddingY)
+        .attr('width', Math.min(
+          cardStyle.titleImageMaxWidth,
+          size.width - cardStyle.cardPaddingX * 2,
+        ))
+        .attr('height', cardStyle.titleImageMaxHeight);
+      images.exit().remove();
+
+      const addressLines = group.select<SVGGElement>('g.middle-school-card-address-lines')
+        .selectAll<SVGTextElement, string>('text.middle-school-card-address')
+        .data(size.addressLines);
+      addressLines.enter()
+        .append('text')
+        .attr('class', 'middle-school-card-address')
+        .attr('font-size', labelStyle.studentFontSize)
+        .merge(addressLines)
+        .attr('x', cardStyle.cardPaddingX)
+        .attr('y', (_, index) => (
+          cardStyle.cardPaddingY + size.titleHeight + cardStyle.cardContentGap +
+          labelStyle.studentFontSize + index * labelStyle.lineHeight
+        ))
+        .text((line) => line);
+      addressLines.exit().remove();
+    });
+
+    merged.interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('transform', (cardScene) => (
+        `translate(${cardScene.rect.x},${cardScene.rect.y}) scale(${cardScene.scale})`
+      ))
+      .attr('opacity', 1);
+    cards.exit()
+      .interrupt()
+      .transition()
+      .duration(defaultConfig.layoutTransitionDurationMs)
+      .attr('opacity', 0)
+      .remove();
   }
 
   private renderLines(scenes: LabelScene[]): void {

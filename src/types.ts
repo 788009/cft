@@ -40,8 +40,11 @@ export interface MiddleSchoolInfo {
   name: string;
   province: string;
   city: string;
+  address: string;
   lat: number;
   lng: number;
+  titleImg?: string;
+  titleImgDark?: string;
 }
 
 export type ProvinceAdcodeMap = Record<string, string>;

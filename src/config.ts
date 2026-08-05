@@ -93,6 +93,12 @@ export interface AppConfig {
     lineLogarithmicStep: number;
     lineInnerGlowSpread: number;
     lineOuterGlowSpread: number;
+    cardMaxWidth: number;
+    cardPaddingX: number;
+    cardPaddingY: number;
+    cardContentGap: number;
+    titleImageMaxWidth: number;
+    titleImageMaxHeight: number;
   };
   regionLabelFontSize: number;
   export: {
@@ -199,6 +205,12 @@ export const defaultConfig: AppConfig = {
     lineLogarithmicStep: 1.1,
     lineInnerGlowSpread: 4,
     lineOuterGlowSpread: 9,
+    cardMaxWidth: 224,
+    cardPaddingX: 8,
+    cardPaddingY: 8,
+    cardContentGap: 5,
+    titleImageMaxWidth: 190,
+    titleImageMaxHeight: 40,
   },
   regionLabelFontSize: 11,
   export: {

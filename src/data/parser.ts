@@ -104,7 +104,7 @@ export function parseMiddleSchoolInfo(
     throw new DataValidationError(`${resourceName} 必须是对象`);
   }
   const record = value as Record<string, unknown>;
-  const textFields = ['name', 'province', 'city'] as const;
+  const textFields = ['name', 'province', 'city', 'address'] as const;
   const textValues = Object.fromEntries(textFields.map((field) => {
     const fieldValue = record[field];
     if (typeof fieldValue !== 'string' || fieldValue.trim() === '') {
@@ -120,7 +120,30 @@ export function parseMiddleSchoolInfo(
   if (typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180) {
     throw new DataValidationError(`${resourceName} 的 lng 无效`);
   }
-  return { ...textValues, lat, lng };
+  const parseAssetPath = (field: 'title_img' | 'title_img_dark'): string | undefined => {
+    const fieldValue = record[field];
+    if (fieldValue === undefined) return undefined;
+    const normalizedValue = typeof fieldValue === 'string' ? fieldValue.trim() : '';
+    if (
+      normalizedValue === '' ||
+      normalizedValue.startsWith('/') ||
+      normalizedValue.includes('\\') ||
+      normalizedValue.split('/').includes('..') ||
+      /^[a-z][a-z\d+.-]*:/i.test(normalizedValue)
+    ) {
+      throw new DataValidationError(`${resourceName} 的 ${field} 必须是 data 目录内的相对路径`);
+    }
+    return normalizedValue;
+  };
+  const titleImg = parseAssetPath('title_img');
+  const titleImgDark = parseAssetPath('title_img_dark');
+  return {
+    ...textValues,
+    lat,
+    lng,
+    ...(titleImg ? { titleImg } : {}),
+    ...(titleImgDark ? { titleImgDark } : {}),
+  };
 }
 
 function parseCoordinate(rawValue: string, field: 'lat' | 'lng', rowNumber: number): number | null {

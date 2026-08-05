@@ -49,18 +49,29 @@ line ""2""",30,120`;
       name: ' 测试中学 ',
       province: '测试省',
       city: '测试市',
+      address: '测试路 1 号',
       lat: 30,
       lng: 120,
+      title_img: 'images/title.png',
+      title_img_dark: 'images/title-dark.png',
     }, 'middle_school_info.json')).toEqual({
       name: '测试中学',
       province: '测试省',
       city: '测试市',
+      address: '测试路 1 号',
       lat: 30,
       lng: 120,
+      titleImg: 'images/title.png',
+      titleImgDark: 'images/title-dark.png',
     });
     expect(() => parseMiddleSchoolInfo({
-      name: '测试中学', province: '测试省', city: '测试市', lat: 91, lng: 120,
+      name: '测试中学', province: '测试省', city: '测试市', address: '测试路 1 号',
+      lat: 91, lng: 120,
     }, 'middle_school_info.json')).toThrow(/lat 无效/);
+    expect(() => parseMiddleSchoolInfo({
+      name: '测试中学', province: '测试省', city: '测试市', address: '测试路 1 号',
+      lat: 30, lng: 120, title_img: '../title.png',
+    }, 'middle_school_info.json')).toThrow(/相对路径/);
   });
 
   it('should group by university and sort students by no while preserving original order on ties', () => {
