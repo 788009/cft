@@ -1051,6 +1051,9 @@ export class SchoolOverlay {
     const entered = cards.enter()
       .append('g')
       .attr('class', 'middle-school-card')
+      .attr('transform', (cardScene) => (
+        `translate(${cardScene.rect.x},${cardScene.rect.y}) scale(${cardScene.scale})`
+      ))
       .attr('opacity', 0)
       .style('pointer-events', 'none');
     entered.append('line')
