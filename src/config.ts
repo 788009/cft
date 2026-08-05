@@ -187,7 +187,7 @@ export const defaultConfig: AppConfig = {
   },
   searchArrowMergeDistance: 48,
   searchArrowHitSize: 44,
-  foreignCorner: 'top-right',
+  foreignCorner: 'bottom-left',
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'stable',
   cardGroupingMode: 'region',
