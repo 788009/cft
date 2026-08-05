@@ -55,6 +55,20 @@ export function getInfoRectanglePlacement(
   };
 }
 
+export function expandRectWithinBounds(rect: Rect, padding: number, bounds: Rect): Rect {
+  const safePadding = Math.max(0, padding);
+  const left = Math.max(bounds.x, rect.x - safePadding);
+  const top = Math.max(bounds.y, rect.y - safePadding);
+  const right = Math.min(bounds.x + bounds.width, rect.x + rect.width + safePadding);
+  const bottom = Math.min(bounds.y + bounds.height, rect.y + rect.height + safePadding);
+  return {
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+  };
+}
+
 export function moveInfoRectangle(
   initial: Rect,
   deltaX: number,

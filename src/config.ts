@@ -8,6 +8,7 @@ export interface AppConfig {
   dataBasePath: string;
   infoRectangleWidthRatio: number;
   infoRectangleHeightRatio: number;
+  regionDetailInfoRectanglePadding: number;
   infoRectangleEditor: {
     minWidth: number;
     minHeight: number;
@@ -122,6 +123,7 @@ export const defaultConfig: AppConfig = {
   dataBasePath: resolveDataBasePath(import.meta.env.BASE_URL),
   infoRectangleWidthRatio: 0.5,
   infoRectangleHeightRatio: 0.5,
+  regionDetailInfoRectanglePadding: 10,
   infoRectangleEditor: {
     minWidth: 120,
     minHeight: 80,

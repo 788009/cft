@@ -13,8 +13,10 @@ import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
 import { SchoolOverlay } from '@/map/SchoolOverlay';
 import {
+  expandRectWithinBounds,
   getDefaultInfoRectanglePlacement,
   getInfoRectangle,
+  getInfoRectanglePlacement,
   type InfoRectanglePlacement,
 } from '@/map/InfoRectangle';
 import type { ProcessedData, SchoolGroup, Student } from '@/types';
@@ -155,6 +157,27 @@ export class RegionDetailRenderer {
     this.svg.attr('viewBox', `0 0 ${width} ${height}`);
     const projection = this.createProjection(width, height);
     const pathGenerator = geoPath().projection(projection);
+    const [[left, top], [right, bottom]] = pathGenerator.bounds(
+      this.featureCollection as never,
+    );
+    const detailInfoRect = expandRectWithinBounds({
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    }, defaultConfig.regionDetailInfoRectanglePadding, {
+      x: 0,
+      y: 0,
+      width,
+      height,
+    });
+    this.overlay.setInfoRectanglePlacement(
+      getInfoRectanglePlacement(detailInfoRect, width, height),
+    );
+    this.svg.attr(
+      'data-info-rectangle-padding',
+      defaultConfig.regionDetailInfoRectanglePadding,
+    );
     this.geometryLayer.selectAll<SVGPathElement, unknown>('path')
       .data(this.featureCollection.features)
       .join('path')

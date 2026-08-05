@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  expandRectWithinBounds,
   getDefaultInfoRectanglePlacement,
   getInfoRectangle,
   getInfoRectanglePlacement,
@@ -30,6 +31,19 @@ describe('information rectangle editing', () => {
     const rect = { x: 180, y: 90, width: 620, height: 360 };
     expect(getInfoRectangle(1000, 600, getInfoRectanglePlacement(rect, 1000, 600)))
       .toEqual(rect);
+  });
+
+  it('expands a rectangle by fixed padding without leaving its bounds', () => {
+    expect(expandRectWithinBounds(
+      { x: 100, y: 80, width: 300, height: 160 },
+      10,
+      bounds,
+    )).toEqual({ x: 90, y: 70, width: 320, height: 180 });
+    expect(expandRectWithinBounds(
+      { x: 15, y: 10, width: 960, height: 570 },
+      10,
+      bounds,
+    )).toEqual({ x: 20, y: 20, width: 960, height: 560 });
   });
 
   it('moves the rectangle without allowing it outside the canvas bounds', () => {

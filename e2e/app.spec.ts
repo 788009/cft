@@ -825,14 +825,34 @@ test('moves and resizes the information range in its dedicated editing mode', as
   const detailMap = page.getByTestId('region-detail-map');
   const detailRectangle = detailMap.locator('rect.info-rectangle');
   await expect(detailRectangle).toBeVisible();
-  const mainSvgBox = await map.locator('svg').boundingBox();
-  const detailSvgBox = await detailMap.boundingBox();
-  if (!mainSvgBox || !detailSvgBox) throw new Error('地图没有可用尺寸');
   const detail = await rectangleGeometry(detailRectangle);
-  expect(detail.x / detailSvgBox.width).toBeCloseTo(confirmed.x / mainSvgBox.width, 4);
-  expect(detail.y / detailSvgBox.height).toBeCloseTo(confirmed.y / mainSvgBox.height, 4);
-  expect(detail.width / detailSvgBox.width).toBeCloseTo(confirmed.width / mainSvgBox.width, 4);
-  expect(detail.height / detailSvgBox.height).toBeCloseTo(confirmed.height / mainSvgBox.height, 4);
+  const detailGeometry = await detailMap.locator('.region-detail-geometry').evaluate((node) => {
+    const bounds = (node as SVGGElement).getBBox();
+    const svg = (node as SVGGElement).ownerSVGElement;
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      canvasWidth: svg?.viewBox.baseVal.width ?? 0,
+      canvasHeight: svg?.viewBox.baseVal.height ?? 0,
+    };
+  });
+  const detailPadding = Number(await detailMap.getAttribute('data-info-rectangle-padding'));
+  const expectedLeft = Math.max(0, detailGeometry.x - detailPadding);
+  const expectedTop = Math.max(0, detailGeometry.y - detailPadding);
+  const expectedRight = Math.min(
+    detailGeometry.canvasWidth,
+    detailGeometry.x + detailGeometry.width + detailPadding,
+  );
+  const expectedBottom = Math.min(
+    detailGeometry.canvasHeight,
+    detailGeometry.y + detailGeometry.height + detailPadding,
+  );
+  expect(detail.x).toBeCloseTo(expectedLeft, 1);
+  expect(detail.y).toBeCloseTo(expectedTop, 1);
+  expect(detail.width).toBeCloseTo(expectedRight - expectedLeft, 1);
+  expect(detail.height).toBeCloseTo(expectedBottom - expectedTop, 1);
 });
 
 test('highlights provinces on hover in dark mode', async ({ page }) => {
