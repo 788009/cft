@@ -26,10 +26,23 @@ describe('region label identities', () => {
     }, 'district')).toEqual({ adcode: '610102', name: '新城区' });
   });
 
-  it('uses the actual feature level for municipality district geometries', () => {
-    expect(getRegionFeatureLabelLevel({
-      properties: { level: 'district', city_adcode: '110000', adcode: 110101 },
-    }, 'city')).toBe('district');
+  it('uses the municipality name at city level and the district name at district level', () => {
+    const municipalityDistrict = {
+      properties: {
+        level: 'district',
+        province_adcode: '110000',
+        city_adcode: '110000',
+        adcode: 110101,
+        name: '东城区',
+      },
+    };
+
+    expect(getRegionFeatureLabelLevel(municipalityDistrict, 'city')).toBe('city');
+    expect(getRegionLabelIdentity(municipalityDistrict, 'city'))
+      .toEqual({ adcode: '110000', name: '北京市' });
+    expect(getRegionFeatureLabelLevel(municipalityDistrict, 'district')).toBe('district');
+    expect(getRegionLabelIdentity(municipalityDistrict, 'district'))
+      .toEqual({ adcode: '110101', name: '东城区' });
   });
 
   it('finds the district geometry containing a university coordinate', () => {

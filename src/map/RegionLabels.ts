@@ -18,6 +18,11 @@ export function getRegionFeatureLabelLevel(
   requestedLevel: RegionLabelLevel,
 ): RegionLabelLevel {
   if (requestedLevel === 'province') return 'province';
+  const properties = feature.properties;
+  if (
+    requestedLevel === 'city' &&
+    String(properties?.city_adcode ?? '') === String(properties?.province_adcode ?? '')
+  ) return 'city';
   const featureLevel = feature.properties?.level;
   return featureLevel === 'city' || featureLevel === 'district'
     ? featureLevel
@@ -41,7 +46,11 @@ export function getRegionLabelIdentity(
     ? properties.city_adcode ?? properties.adcode
     : properties.adcode;
   const adcode = String(rawAdcode ?? '');
-  const name = typeof properties.name === 'string' ? properties.name.trim() : '';
+  const isMunicipality = level === 'city'
+    && adcode === String(properties.province_adcode ?? '');
+  const name = isMunicipality
+    ? (provinceNames as Record<string, string>)[adcode]
+    : typeof properties.name === 'string' ? properties.name.trim() : '';
   return adcode && name ? { adcode, name } : null;
 }
 
