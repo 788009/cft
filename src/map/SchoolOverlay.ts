@@ -836,26 +836,60 @@ export class SchoolOverlay {
       }];
     });
     const lineStyle = defaultConfig.middleSchoolStyle;
-    this.middleSchoolLinesLayer
-      .selectAll<SVGLineElement, MiddleSchoolConnection>('line.middle-school-connection')
+    const connectionGroups = this.middleSchoolLinesLayer
+      .selectAll<SVGGElement, MiddleSchoolConnection>('g.middle-school-connection-group')
       .data(connections, (connection) => connection.id)
-      .join('line')
-      .attr('class', 'middle-school-connection')
+      .join((enter) => {
+        const group = enter.append('g').attr('class', 'middle-school-connection-group');
+        group.append('line').attr(
+          'class',
+          'middle-school-connection-glow middle-school-connection-glow-outer',
+        );
+        group.append('line').attr(
+          'class',
+          'middle-school-connection-glow middle-school-connection-glow-inner',
+        );
+        group.append('line').attr('class', 'middle-school-connection');
+        return group;
+      })
+      .attr('data-anchor-id', (connection) => connection.id)
+      .attr('data-student-count', (connection) => connection.studentCount);
+    const lineWidth = (connection: MiddleSchoolConnection): number => (
+      calculateMiddleSchoolLineWidth(connection.studentCount, {
+        minWidth: lineStyle.lineMinWidth,
+        maxWidth: lineStyle.lineMaxWidth,
+        logarithmicStep: lineStyle.lineLogarithmicStep,
+      })
+    );
+    const setLineGeometry = (
+      selection: Selection<SVGLineElement, MiddleSchoolConnection, SVGGElement, unknown>,
+    ): void => {
+      selection
+        .attr('x1', (connection) => connection.middleSchoolAnchor.x)
+        .attr('y1', (connection) => connection.middleSchoolAnchor.y)
+        .attr('x2', (connection) => connection.anchor.x)
+        .attr('y2', (connection) => connection.anchor.y)
+        .attr('vector-effect', 'non-scaling-stroke');
+    };
+    const outerGlow = connectionGroups.select<SVGLineElement>(
+      'line.middle-school-connection-glow-outer',
+    ).attr(
+      'stroke-width',
+      (connection) => lineWidth(connection) + lineStyle.lineOuterGlowSpread,
+    );
+    const innerGlow = connectionGroups.select<SVGLineElement>(
+      'line.middle-school-connection-glow-inner',
+    ).attr(
+      'stroke-width',
+      (connection) => lineWidth(connection) + lineStyle.lineInnerGlowSpread,
+    );
+    const coreLines = connectionGroups.select<SVGLineElement>('line.middle-school-connection')
       .attr('data-anchor-id', (connection) => connection.id)
       .attr('data-student-count', (connection) => connection.studentCount)
-      .attr('x1', (connection) => connection.middleSchoolAnchor.x)
-      .attr('y1', (connection) => connection.middleSchoolAnchor.y)
-      .attr('x2', (connection) => connection.anchor.x)
-      .attr('y2', (connection) => connection.anchor.y)
-      .attr('stroke-width', (connection) => calculateMiddleSchoolLineWidth(
-        connection.studentCount,
-        {
-          minWidth: lineStyle.lineMinWidth,
-          maxWidth: lineStyle.lineMaxWidth,
-          logarithmicStep: lineStyle.lineLogarithmicStep,
-        },
-      ))
-      .attr('vector-effect', 'non-scaling-stroke');
+      .attr('stroke-width', lineWidth);
+    setLineGeometry(outerGlow);
+    setLineGeometry(innerGlow);
+    setLineGeometry(coreLines);
 
     const marker = this.middleSchoolMarkerLayer
       .selectAll<SVGGElement, MiddleSchoolInfo>('g.middle-school-marker')

@@ -91,6 +91,8 @@ export interface AppConfig {
     lineMinWidth: number;
     lineMaxWidth: number;
     lineLogarithmicStep: number;
+    lineInnerGlowSpread: number;
+    lineOuterGlowSpread: number;
   };
   regionLabelFontSize: number;
   export: {
@@ -195,6 +197,8 @@ export const defaultConfig: AppConfig = {
     lineMinWidth: 1.5,
     lineMaxWidth: 6,
     lineLogarithmicStep: 1.1,
+    lineInnerGlowSpread: 4,
+    lineOuterGlowSpread: 9,
   },
   regionLabelFontSize: 11,
   export: {

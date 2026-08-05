@@ -442,6 +442,9 @@ test('renders middle school connections and keeps them synchronized with map anc
   await expect(marker).toBeVisible();
   await expect(lines).not.toHaveCount(0);
   const initialLineCount = await lines.count();
+  await expect(map.locator('line.middle-school-connection-glow'))
+    .toHaveCount(initialLineCount * 2);
+  expect(await lines.first().evaluate((line) => getComputedStyle(line).filter)).toBe('none');
   const widths = await lines.evaluateAll((nodes) => nodes.map((node) => ({
     count: Number(node.getAttribute('data-student-count')),
     width: Number(node.getAttribute('stroke-width')),

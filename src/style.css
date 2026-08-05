@@ -52,15 +52,26 @@
 .middle-school-connection {
   stroke: #dc2626;
   stroke-linecap: round;
-  opacity: 0.82;
-  filter: drop-shadow(0 0 3px rgba(220, 38, 38, 0.95));
+  opacity: 0.88;
+}
+
+.middle-school-connection-glow {
+  stroke: #ef4444;
+  stroke-linecap: round;
+}
+
+.middle-school-connection-glow-outer {
+  opacity: 0.1;
+}
+
+.middle-school-connection-glow-inner {
+  opacity: 0.2;
 }
 
 .middle-school-marker-halo {
   fill: rgba(239, 68, 68, 0.2);
   stroke: rgba(220, 38, 38, 0.72);
   stroke-width: 2;
-  filter: drop-shadow(0 0 5px rgba(220, 38, 38, 0.95));
 }
 
 .middle-school-marker-core {
@@ -75,7 +86,10 @@
 
 .dark .middle-school-connection {
   stroke: #f87171;
-  filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.95));
+}
+
+.dark .middle-school-connection-glow {
+  stroke: #f87171;
 }
 
 .dark .middle-school-marker-halo {
