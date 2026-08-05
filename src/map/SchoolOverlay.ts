@@ -904,10 +904,12 @@ export class SchoolOverlay {
     );
     if (!projected) return null;
     const [x, y] = transform.apply([projected.x, projected.y]);
+    const anchor = { x, y };
+    if (!containsPoint(this.currentInfoRect, anchor)) return null;
     const size = middleSchoolCardSize(this.middleSchool);
     return {
       id: MIDDLE_SCHOOL_CARD_ID,
-      anchor: { x, y },
+      anchor,
       width: size.width,
       height: size.height,
     };
