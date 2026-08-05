@@ -74,6 +74,7 @@ export interface AppConfig {
     siblingGap: number;
   };
   searchArrowMergeDistance: number;
+  searchArrowHitSize: number;
   foreignCorner: Corner;
   settingsButtonCorner: Corner;
   mapInteractionMode: MapInteractionMode;
@@ -169,6 +170,7 @@ export const defaultConfig: AppConfig = {
     siblingGap: 8,
   },
   searchArrowMergeDistance: 48,
+  searchArrowHitSize: 44,
   foreignCorner: 'top-right',
   settingsButtonCorner: 'top-left',
   mapInteractionMode: 'stable',

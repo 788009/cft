@@ -178,6 +178,7 @@ export class MapRenderer {
 
   public setSearchResult(result: SearchResult): void {
     this.schoolOverlay.setSearchResult(result);
+    this.updateSchoolOverlay();
   }
 
   public setUiObstacles(obstacles: Rect[]): void {
@@ -251,6 +252,13 @@ export class MapRenderer {
     this.updateRegionLabelScale();
     if (!this.applyingInitialView && this.interactionMode === 'stable') {
       this.updateSchoolOverlay();
+    } else if (!this.applyingInitialView) {
+      this.schoolOverlay.updateSearchArrows(
+        this.width,
+        this.height,
+        this.projection,
+        this.currentTransform,
+      );
     }
     const newLevel = this.levelManager.update(event.transform.k);
     this.emitViewChange(newLevel);

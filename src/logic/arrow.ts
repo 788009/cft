@@ -10,6 +10,8 @@ export interface Rect {
   height: number;
 }
 
+export type RectEdge = 'top' | 'right' | 'bottom' | 'left';
+
 export interface ArrowTarget {
   id: string;
   target: Point;
@@ -19,126 +21,121 @@ export interface ArrowGroup {
   x: number;
   y: number;
   angle: number;
+  edge: RectEdge;
   count: number;
   ids: string[];
 }
 
-export function getRayIntersection(center: Point, target: Point, rect: Rect): Point | null {
+interface EdgeIntersection extends Point {
+  edge: RectEdge;
+}
+
+interface PositionedArrow extends EdgeIntersection {
+  id: string;
+  angle: number;
+}
+
+function containsPoint(rect: Rect, point: Point): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
+function getRayEdgeIntersection(
+  center: Point,
+  target: Point,
+  rect: Rect,
+): EdgeIntersection | null {
+  if (containsPoint(rect, target)) return null;
   const dx = target.x - center.x;
   const dy = target.y - center.y;
-  
-  if (dx === 0 && dy === 0) {
-    return null;
-  }
+  if (dx === 0 && dy === 0) return null;
 
-  const left = rect.x;
-  const right = rect.x + rect.width;
-  const top = rect.y;
-  const bottom = rect.y + rect.height;
-
-  let tMin = Infinity;
-  let intersectX = center.x;
-  let intersectY = center.y;
+  const candidates: Array<EdgeIntersection & { distance: number }> = [];
+  const addCandidate = (distance: number, edge: RectEdge): void => {
+    if (distance <= 0) return;
+    const x = center.x + distance * dx;
+    const y = center.y + distance * dy;
+    const withinHorizontal = x >= rect.x && x <= rect.x + rect.width;
+    const withinVertical = y >= rect.y && y <= rect.y + rect.height;
+    if (
+      (edge === 'top' || edge === 'bottom' ? withinHorizontal : withinVertical)
+    ) candidates.push({ x, y, edge, distance });
+  };
 
   if (dx !== 0) {
-    const t1 = (left - center.x) / dx;
-    if (t1 > 0 && t1 < tMin) {
-      const y = center.y + t1 * dy;
-      if (y >= top && y <= bottom) {
-        tMin = t1;
-        intersectX = left;
-        intersectY = y;
-      }
-    }
-    const t2 = (right - center.x) / dx;
-    if (t2 > 0 && t2 < tMin) {
-      const y = center.y + t2 * dy;
-      if (y >= top && y <= bottom) {
-        tMin = t2;
-        intersectX = right;
-        intersectY = y;
-      }
-    }
+    addCandidate((rect.x - center.x) / dx, 'left');
+    addCandidate((rect.x + rect.width - center.x) / dx, 'right');
   }
-
   if (dy !== 0) {
-    const t3 = (top - center.y) / dy;
-    if (t3 > 0 && t3 < tMin) {
-      const x = center.x + t3 * dx;
-      if (x >= left && x <= right) {
-        tMin = t3;
-        intersectX = x;
-        intersectY = top;
-      }
-    }
-    const t4 = (bottom - center.y) / dy;
-    if (t4 > 0 && t4 < tMin) {
-      const x = center.x + t4 * dx;
-      if (x >= left && x <= right) {
-        tMin = t4;
-        intersectX = x;
-        intersectY = bottom;
-      }
-    }
+    addCandidate((rect.y - center.y) / dy, 'top');
+    addCandidate((rect.y + rect.height - center.y) / dy, 'bottom');
   }
+  const intersection = candidates.sort((left, right) => left.distance - right.distance)[0];
+  return intersection
+    ? { x: intersection.x, y: intersection.y, edge: intersection.edge }
+    : null;
+}
 
-  if (tMin === Infinity) {
-    return null;
-  }
+export function getRayIntersection(center: Point, target: Point, rect: Rect): Point | null {
+  const intersection = getRayEdgeIntersection(center, target, rect);
+  return intersection ? { x: intersection.x, y: intersection.y } : null;
+}
 
-  return { x: intersectX, y: intersectY };
+function edgePosition(arrow: PositionedArrow): number {
+  return arrow.edge === 'top' || arrow.edge === 'bottom' ? arrow.x : arrow.y;
+}
+
+function createGroup(arrows: PositionedArrow[]): ArrowGroup {
+  const count = arrows.length;
+  const sumCos = arrows.reduce((sum, arrow) => sum + Math.cos(arrow.angle), 0);
+  const sumSin = arrows.reduce((sum, arrow) => sum + Math.sin(arrow.angle), 0);
+  return {
+    x: arrows.reduce((sum, arrow) => sum + arrow.x, 0) / count,
+    y: arrows.reduce((sum, arrow) => sum + arrow.y, 0) / count,
+    angle: Math.atan2(sumSin, sumCos),
+    edge: arrows[0].edge,
+    count,
+    ids: arrows.map((arrow) => arrow.id),
+  };
 }
 
 export function calculateArrows(
   center: Point,
   rect: Rect,
   targets: ArrowTarget[],
-  mergeDistance: number
+  mergeDistance: number,
 ): ArrowGroup[] {
-  const arrows = targets
-    .map((t) => {
-      const p = getRayIntersection(center, t.target, rect);
-      if (!p) return null;
-      const angle = Math.atan2(t.target.y - center.y, t.target.x - center.x);
-      return { id: t.id, x: p.x, y: p.y, angle };
-    })
-    .filter((a): a is NonNullable<typeof a> => a !== null);
-
+  const arrows = targets.flatMap((target): PositionedArrow[] => {
+    const intersection = getRayEdgeIntersection(center, target.target, rect);
+    return intersection ? [{
+      id: target.id,
+      ...intersection,
+      angle: Math.atan2(target.target.y - center.y, target.target.x - center.x),
+    }] : [];
+  });
   const groups: ArrowGroup[] = [];
+  const edgeOrder: RectEdge[] = ['top', 'right', 'bottom', 'left'];
 
-  for (let i = 0; i < arrows.length; i++) {
-    const arrow = arrows[i];
-    let merged = false;
-
-    for (let j = 0; j < groups.length; j++) {
-      const g = groups[j];
-      const dist = Math.sqrt(Math.pow(g.x - arrow.x, 2) + Math.pow(g.y - arrow.y, 2));
-
-      if (dist <= mergeDistance) {
-        g.ids.push(arrow.id);
-        g.count += 1;
-
-        const sumX = Math.cos(g.angle) * (g.count - 1) + Math.cos(arrow.angle);
-        const sumY = Math.sin(g.angle) * (g.count - 1) + Math.sin(arrow.angle);
-        g.angle = Math.atan2(sumY, sumX);
-
-        g.x = (g.x * (g.count - 1) + arrow.x) / g.count;
-        g.y = (g.y * (g.count - 1) + arrow.y) / g.count;
-
-        merged = true;
-        break;
+  for (const edge of edgeOrder) {
+    const edgeArrows = arrows
+      .filter((arrow) => arrow.edge === edge)
+      .sort((left, right) => (
+        edgePosition(left) - edgePosition(right) || left.id.localeCompare(right.id)
+      ));
+    let cluster: PositionedArrow[] = [];
+    for (const arrow of edgeArrows) {
+      const first = cluster[0];
+      if (first && edgePosition(arrow) - edgePosition(first) > mergeDistance) {
+        groups.push(createGroup(cluster));
+        cluster = [];
       }
+      cluster.push(arrow);
     }
-
-    if (!merged) {
-      groups.push({
-        x: arrow.x,
-        y: arrow.y,
-        angle: arrow.angle,
-        count: 1,
-        ids: [arrow.id],
-      });
-    }
+    if (cluster.length > 0) groups.push(createGroup(cluster));
   }
 
   return groups;

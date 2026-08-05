@@ -32,6 +32,7 @@ import {
   type RegionCenter,
 } from './RegionCards';
 import type { SearchResult } from '@/logic/search';
+import { calculateArrows, type ArrowGroup } from '@/logic/arrow';
 
 interface CardDatum {
   id: string;
@@ -173,6 +174,7 @@ export class SchoolOverlay {
   private readonly anchorsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly labelsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly foreignLayer: Selection<SVGGElement, unknown, null, undefined>;
+  private readonly searchArrowsLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly editorLayer: Selection<SVGGElement, unknown, null, undefined>;
   private readonly editorBlocker: Selection<SVGRectElement, unknown, null, undefined>;
   private readonly editorMoveSurface: Selection<SVGRectElement, unknown, null, undefined>;
@@ -201,7 +203,9 @@ export class SchoolOverlay {
   private touchSelectedSchoolId: string | null = null;
   private matchedStudents = new Set<Student>();
   private matchedSchools = new Set<SchoolGroup>();
+  private matchedTargetSchools = new Set<SchoolGroup>();
   private uiObstacles: Rect[] = [];
+  private selectedArrowKey: string | null = null;
   private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
     if (event.pointerType !== 'touch') return;
     const target = event.target;
@@ -239,6 +243,7 @@ export class SchoolOverlay {
     this.anchorsLayer = this.root.append('g').attr('class', 'school-anchors');
     this.labelsLayer = this.root.append('g').attr('class', 'school-labels');
     this.foreignLayer = this.root.append('g').attr('class', 'foreign-schools');
+    this.searchArrowsLayer = this.root.append('g').attr('class', 'search-arrows');
     this.editorLayer = this.root.append('g')
       .attr('class', 'info-rectangle-editor')
       .attr('data-testid', 'info-rectangle-editor')
@@ -324,6 +329,13 @@ export class SchoolOverlay {
   public setSearchResult(result: SearchResult): void {
     this.matchedStudents = new Set(result.matchedStudents);
     this.matchedSchools = new Set(result.matchedSchools);
+    this.matchedTargetSchools = new Set(result.targetSchools);
+    if (
+      this.selectedArrowKey &&
+      !Array.from(this.matchedTargetSchools).some((school) => (
+        this.selectedArrowKey?.split('\u0000').includes(school.university)
+      ))
+    ) this.selectedArrowKey = null;
     this.root
       .attr('data-search-student-count', this.matchedStudents.size)
       .attr('data-search-school-count', this.matchedSchools.size);
@@ -427,6 +439,20 @@ export class SchoolOverlay {
       width: Math.max(0, width - margin * 2),
       height: Math.max(0, height - margin * 2),
     };
+    const searchArrowGroups = this.calculateSearchArrowGroups(
+      width,
+      height,
+      projection,
+      transform,
+      infoRect,
+    );
+    const arrowHalfSize = defaultConfig.searchArrowHitSize / 2;
+    const searchArrowObstacles: Rect[] = searchArrowGroups.map((group) => ({
+      x: group.x - arrowHalfSize,
+      y: group.y - arrowHalfSize,
+      width: defaultConfig.searchArrowHitSize,
+      height: defaultConfig.searchArrowHitSize,
+    }));
 
     this.infoRectangle
       .attr('x', infoRect.x)
@@ -520,6 +546,7 @@ export class SchoolOverlay {
           infoRect,
           obstacles: [
             ...this.uiObstacles,
+            ...searchArrowObstacles,
             ...(scene ? [scene.rect] : []),
           ],
           spacing: defaultConfig.labelSpacing,
@@ -565,6 +592,23 @@ export class SchoolOverlay {
     this.renderAnchors(scenes);
     this.renderLabels(scenes);
     this.renderForeignPanel(foreignScene);
+    this.renderSearchArrows(searchArrowGroups);
+  }
+
+  public updateSearchArrows(
+    width: number,
+    height: number,
+    projection: GeoProjection,
+    transform: ZoomTransform,
+  ): void {
+    const infoRect = getInfoRectangle(width, height, this.infoRectanglePlacement);
+    this.renderSearchArrows(this.calculateSearchArrowGroups(
+      width,
+      height,
+      projection,
+      transform,
+      infoRect,
+    ));
   }
 
   public destroy(): void {
@@ -986,6 +1030,115 @@ export class SchoolOverlay {
       .classed('is-search-match', (school) => matchedSchools.has(school));
     foreignGroups.selectAll<SVGTextElement, Student>('text.student-name')
       .classed('is-search-match', (student) => matchedStudents.has(student));
+  }
+
+  private calculateSearchArrowGroups(
+    width: number,
+    height: number,
+    projection: GeoProjection,
+    transform: ZoomTransform,
+    infoRect: Rect,
+  ): ArrowGroup[] {
+    const targets = Array.from(this.matchedTargetSchools).flatMap((school) => {
+      if (school.isForeign || school.lat === null || school.lng === null) return [];
+      const projected = getProjectedPoint(projection, school.lat, school.lng);
+      if (!projected) return [];
+      const [x, y] = transform.apply([projected.x, projected.y]);
+      return [{ id: school.university, target: { x, y } }];
+    });
+    return calculateArrows(
+      { x: width / 2, y: height / 2 },
+      infoRect,
+      targets,
+      defaultConfig.searchArrowMergeDistance,
+    );
+  }
+
+  private renderSearchArrows(groups: ArrowGroup[]): void {
+    const keyFor = (group: ArrowGroup): string => [...group.ids].sort().join('\u0000');
+    if (this.selectedArrowKey && !groups.some((group) => keyFor(group) === this.selectedArrowKey)) {
+      this.selectedArrowKey = null;
+    }
+    const arrows = this.searchArrowsLayer
+      .selectAll<SVGGElement, ArrowGroup>('g.search-arrow')
+      .data(groups, keyFor);
+    const entered = arrows.enter()
+      .append('g')
+      .attr('class', 'search-arrow')
+      .attr('role', 'button')
+      .attr('tabindex', 0)
+      .style('pointer-events', 'all');
+    entered.append('circle')
+      .attr('class', 'search-arrow-hit')
+      .attr('r', defaultConfig.searchArrowHitSize / 2)
+      .attr('fill', 'transparent');
+    entered.append('circle')
+      .attr('class', 'search-arrow-background')
+      .attr('r', 14)
+      .attr('fill', '#ffffff')
+      .attr('stroke', '#b45309')
+      .attr('stroke-width', 2);
+    entered.append('path')
+      .attr('class', 'search-arrow-direction')
+      .attr('d', 'M -6 -7 L 9 0 L -6 7 Z')
+      .attr('fill', '#b45309')
+      .style('pointer-events', 'none');
+    const badge = entered.append('g')
+      .attr('class', 'search-arrow-badge')
+      .style('pointer-events', 'none');
+    badge.append('circle')
+      .attr('cx', 11)
+      .attr('cy', -11)
+      .attr('r', 9)
+      .attr('fill', '#b45309');
+    badge.append('text')
+      .attr('x', 11)
+      .attr('y', -11)
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central')
+      .attr('font-size', 10)
+      .attr('font-weight', 700)
+      .attr('fill', '#ffffff');
+    entered.append('title');
+
+    const merged = entered.merge(arrows)
+      .attr('transform', (group) => `translate(${group.x},${group.y})`)
+      .attr('data-edge', (group) => group.edge)
+      .attr('data-count', (group) => group.count)
+      .attr('data-school-ids', (group) => group.ids.join('|'))
+      .attr('aria-label', (group) => (
+        group.count === 1
+          ? `匹配学校：${group.ids[0]}`
+          : `${group.count} 所匹配学校：${group.ids.join('、')}`
+      ))
+      .attr('aria-pressed', (group) => String(keyFor(group) === this.selectedArrowKey))
+      .classed('is-selected', (group) => keyFor(group) === this.selectedArrowKey)
+      .on('click', (_event, group) => this.toggleSearchArrow(keyFor(group)))
+      .on('keydown', (event: KeyboardEvent, group) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        this.toggleSearchArrow(keyFor(group));
+      });
+    merged.select<SVGPathElement>('path.search-arrow-direction')
+      .attr('transform', (group) => `rotate(${group.angle * 180 / Math.PI})`);
+    merged.select<SVGGElement>('g.search-arrow-badge')
+      .style('display', (group) => group.count > 1 ? '' : 'none');
+    merged.select<SVGTextElement>('g.search-arrow-badge text')
+      .text((group) => group.count);
+    merged.select<SVGTitleElement>('title')
+      .text((group) => group.ids.join('、'));
+    arrows.exit().remove();
+  }
+
+  private toggleSearchArrow(key: string): void {
+    this.selectedArrowKey = this.selectedArrowKey === key ? null : key;
+    this.searchArrowsLayer.selectAll<SVGGElement, ArrowGroup>('g.search-arrow')
+      .attr('aria-pressed', (group) => String(
+        [...group.ids].sort().join('\u0000') === this.selectedArrowKey
+      ))
+      .classed('is-selected', (group) => (
+        [...group.ids].sort().join('\u0000') === this.selectedArrowKey
+      ));
   }
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {

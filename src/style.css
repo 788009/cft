@@ -90,6 +90,30 @@ text.is-search-match {
   text-decoration: underline;
 }
 
+.search-arrow {
+  cursor: pointer;
+  outline: none;
+}
+
+.search-arrow-background,
+.search-arrow-direction {
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+
+.search-arrow:hover .search-arrow-background,
+.search-arrow:focus-visible .search-arrow-background,
+.search-arrow.is-selected .search-arrow-background {
+  fill: #fffbeb;
+  stroke: #92400e;
+  stroke-width: 3;
+}
+
+.search-arrow:hover .search-arrow-direction,
+.search-arrow:focus-visible .search-arrow-direction,
+.search-arrow.is-selected .search-arrow-direction {
+  fill: #92400e;
+}
+
 .region-name-label {
   fill: #334155;
   stroke: rgba(255, 255, 255, 0.88);
@@ -151,6 +175,29 @@ text.is-search-match {
 
 .dark text.is-search-match {
   fill: #fbbf24;
+}
+
+.dark .search-arrow-background {
+  fill: #111827;
+  stroke: #fbbf24;
+}
+
+.dark .search-arrow-direction,
+.dark .search-arrow-badge circle {
+  fill: #fbbf24;
+}
+
+.dark .search-arrow:hover .search-arrow-background,
+.dark .search-arrow:focus-visible .search-arrow-background,
+.dark .search-arrow.is-selected .search-arrow-background {
+  fill: #422006;
+  stroke: #fde68a;
+}
+
+.dark .search-arrow:hover .search-arrow-direction,
+.dark .search-arrow:focus-visible .search-arrow-direction,
+.dark .search-arrow.is-selected .search-arrow-direction {
+  fill: #fde68a;
 }
 
 .dark .region-name-label {

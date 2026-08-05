@@ -141,6 +141,81 @@ test('expands and collapses the compact search control toward the viewport cente
   await expect(input).toBeHidden();
 });
 
+test('renders interactive search arrows for matched schools outside the information range', async ({
+  page,
+}) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const input = page.getByTestId('search-input');
+  if (await input.isHidden()) await page.getByTestId('search-toggle').click();
+  const regionCard = map.locator('g.school-label:has(text.card-university)').first();
+  await expect(regionCard).toBeVisible();
+  const regionName = (await regionCard.locator('text.school-label-title').textContent())?.trim();
+  const matchedSchoolCount = await regionCard.locator('text.card-university').count();
+  if (!regionName || matchedSchoolCount === 0) throw new Error('地区卡片缺少搜索数据');
+  await input.fill(regionName);
+  await expect(map.locator('g.search-arrow')).toHaveCount(0);
+
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 1.3, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  const arrows = map.locator('g.search-arrow');
+  await expect(arrows).not.toHaveCount(0);
+  const totalArrowCount = await arrows.evaluateAll((nodes) => nodes.reduce(
+    (total, node) => total + Number((node as SVGGElement).dataset.count),
+    0,
+  ));
+  expect(totalArrowCount).toBe(matchedSchoolCount);
+  const firstArrow = arrows.first();
+  await expect(firstArrow.locator('circle.search-arrow-hit')).toHaveAttribute('r', '22');
+  const geometry = await map.evaluate((container) => {
+    const arrow = container.querySelector<SVGGElement>('g.search-arrow');
+    const info = container.querySelector<SVGRectElement>('rect.info-rectangle');
+    if (!arrow || !info) return null;
+    const match = arrow.getAttribute('transform')?.match(/translate\(([^,]+),([^\)]+)\)/);
+    if (!match) return null;
+    return {
+      x: Number(match[1]),
+      y: Number(match[2]),
+      edge: arrow.dataset.edge,
+      rect: {
+        x: Number(info.getAttribute('x')),
+        y: Number(info.getAttribute('y')),
+        width: Number(info.getAttribute('width')),
+        height: Number(info.getAttribute('height')),
+      },
+    };
+  });
+  if (!geometry) throw new Error('搜索箭头缺少几何信息');
+  const expectedBoundary = geometry.edge === 'left'
+    ? geometry.rect.x
+    : geometry.edge === 'right'
+      ? geometry.rect.x + geometry.rect.width
+      : geometry.edge === 'top'
+        ? geometry.rect.y
+        : geometry.rect.y + geometry.rect.height;
+  expect(geometry.edge === 'left' || geometry.edge === 'right' ? geometry.x : geometry.y)
+    .toBeCloseTo(expectedBoundary, 5);
+
+  await firstArrow.click({ force: true });
+  await expect(firstArrow).toHaveAttribute('aria-pressed', 'true');
+  const previousTransform = await firstArrow.getAttribute('transform');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 80, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => arrows.first().getAttribute('transform')).not.toBe(previousTransform);
+
+  await page.getByTestId('clear-search').click();
+  await expect(arrows).toHaveCount(0);
+});
+
 test('centers domestic school extremes and fits their dominant span to the information range', async ({ page }) => {
   await page.goto('/');
 
