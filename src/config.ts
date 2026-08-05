@@ -63,6 +63,7 @@ export interface AppConfig {
     distance: number;
     stability: number;
   };
+  searchSuggestionLimit: number;
   searchArrowMergeDistance: number;
   foreignCorner: Corner;
   settingsButtonCorner: Corner;
@@ -148,6 +149,7 @@ export const defaultConfig: AppConfig = {
     distance: 100,
     stability: 0,
   },
+  searchSuggestionLimit: 8,
   searchArrowMergeDistance: 48,
   foreignCorner: 'top-right',
   settingsButtonCorner: 'top-left',
