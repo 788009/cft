@@ -1051,7 +1051,7 @@ test('opens a static province detail scene with every indexed school', async ({ 
   await expect(detailMap.locator('g.school-label')).not.toHaveCount(0);
 
   const expectedSchoolCount = Number(await detailMap.getAttribute('data-region-school-count'));
-  await expect(detailMap.locator('g.school-label')).toHaveCount(expectedSchoolCount);
+  await expect(detailMap.locator('text.card-university')).toHaveCount(expectedSchoolCount);
   const initialGeometryTransform = await detailMap.locator('.region-detail-geometry').getAttribute('transform');
   const detailBox = await detailMap.boundingBox();
   if (!detailBox) throw new Error('地区详情地图没有可用尺寸');
@@ -1091,6 +1091,7 @@ test('opens city details at city level and does not drill down from districts', 
   await expect(dialog).toBeVisible();
   await expect(detailMap).toHaveAttribute('data-region-level', 'city');
   await expect(detailMap.locator('.region-detail-geometry path')).not.toHaveCount(0);
+  await expect(detailMap.locator('g.school-label')).not.toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
 

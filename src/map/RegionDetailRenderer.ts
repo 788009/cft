@@ -1,5 +1,13 @@
-import { geoMercator, geoPath, select, zoomIdentity, type GeoProjection, type Selection } from 'd3';
-import { defaultConfig, MAP_STYLES } from '@/config';
+import {
+  geoCentroid,
+  geoMercator,
+  geoPath,
+  select,
+  zoomIdentity,
+  type GeoProjection,
+  type Selection,
+} from 'd3';
+import { defaultConfig, MAP_STYLES, type CardGroupingMode } from '@/config';
 import { loadGeoJSON } from '@/data/fetcher';
 import type { RegionSelection } from '@/details/types';
 import { rewindFeature } from '@/map/geo';
@@ -16,6 +24,7 @@ import {
   getRegionLabelIdentity,
   type RegionLabelLevel,
 } from '@/map/RegionLabels';
+import { parseGeoJsonCenter, type RegionCenter } from '@/map/RegionCards';
 
 interface FeatureCollection {
   type: 'FeatureCollection';
@@ -45,6 +54,7 @@ export class RegionDetailRenderer {
     showInfoRectangle = defaultConfig.showInfoRectangle,
     infoRectanglePlacement = getDefaultInfoRectanglePlacement(),
     enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization,
+    cardGroupingMode = defaultConfig.cardGroupingMode,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
@@ -67,6 +77,8 @@ export class RegionDetailRenderer {
       infoRectanglePlacement,
       enableLocalLayoutOptimization,
     });
+    this.overlay.setCardGroupingMode(cardGroupingMode);
+    this.overlay.setMapLevel('city');
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);
   }
@@ -85,6 +97,7 @@ export class RegionDetailRenderer {
       ? data.indexes.schoolsByProvinceAdcode.get(selection.adcode) ?? []
       : data.indexes.schoolsByCityAdcode.get(selection.adcode) ?? [];
     this.overlay.setSchools(this.schools, []);
+    this.overlay.setRegionCenters('city', this.getCityCenters(selection));
     this.svg
       .attr('data-region-level', selection.level)
       .attr('data-region-adcode', selection.adcode)
@@ -116,6 +129,12 @@ export class RegionDetailRenderer {
 
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
     this.overlay.setLocalLayoutOptimizationEnabled(enabled);
+    this.overlay.resetLayout();
+    this.updateScene();
+  }
+
+  public setCardGroupingMode(mode: CardGroupingMode): void {
+    this.overlay.setCardGroupingMode(mode);
     this.overlay.resetLayout();
     this.updateScene();
   }
@@ -192,5 +211,38 @@ export class RegionDetailRenderer {
       [infoRect.x + inset, infoRect.y + inset],
       [infoRect.x + infoRect.width - inset, infoRect.y + infoRect.height - inset],
     ], this.featureCollection as never);
+  }
+
+  private getCityCenters(selection: RegionSelection): Map<string, RegionCenter> {
+    if (!this.featureCollection) return new Map();
+    if (selection.level === 'city') {
+      const [longitude, latitude] = geoCentroid(this.featureCollection as never);
+      return new Map([[selection.adcode, {
+        adcode: selection.adcode,
+        name: selection.name,
+        longitude,
+        latitude,
+      }]]);
+    }
+
+    const centers = new Map<string, RegionCenter>();
+    for (const feature of this.featureCollection.features) {
+      const properties = (feature as { properties?: Record<string, unknown> }).properties ?? {};
+      const adcode = String(properties.city_adcode ?? properties.adcode ?? '');
+      if (!adcode || centers.has(adcode)) continue;
+      const coordinates = parseGeoJsonCenter(properties.center)
+        ?? geoCentroid(feature as never);
+      const name = adcode === selection.adcode
+        ? selection.name
+        : typeof properties.name === 'string' ? properties.name.trim() : '';
+      if (!name || !coordinates.every(Number.isFinite)) continue;
+      centers.set(adcode, {
+        adcode,
+        name,
+        longitude: coordinates[0],
+        latitude: coordinates[1],
+      });
+    }
+    return centers;
   }
 }

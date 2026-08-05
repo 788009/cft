@@ -60,6 +60,7 @@ export class AppController {
       this.showInfoRectangle,
       this.infoRectanglePlacement,
       this.enableLocalLayoutOptimization,
+      this.cardGroupingMode,
     );
     this.theme = new ThemeController(defaultConfig.themeMode);
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
@@ -94,6 +95,7 @@ export class AppController {
         onCardGroupingModeChange: (mode) => {
           this.cardGroupingMode = mode;
           this.renderer?.setCardGroupingMode(mode);
+          this.details.setCardGroupingMode(mode);
         },
         onShowRegionNamesChange: (show) => {
           this.showRegionNames = show;

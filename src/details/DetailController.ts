@@ -4,6 +4,7 @@ import { ModalShell } from './ModalShell';
 import { RegionDetailRenderer } from '@/map/RegionDetailRenderer';
 import { getPersonDetailRows } from './person';
 import type { InfoRectanglePlacement } from '@/map/InfoRectangle';
+import type { CardGroupingMode } from '@/config';
 
 export class DetailController {
   private readonly container: HTMLElement;
@@ -16,6 +17,7 @@ export class DetailController {
   private showInfoRectangle: boolean;
   private infoRectanglePlacement: InfoRectanglePlacement;
   private enableLocalLayoutOptimization: boolean;
+  private cardGroupingMode: CardGroupingMode;
 
   constructor(
     container: HTMLElement,
@@ -24,6 +26,7 @@ export class DetailController {
     showInfoRectangle: boolean,
     infoRectanglePlacement: InfoRectanglePlacement,
     enableLocalLayoutOptimization: boolean,
+    cardGroupingMode: CardGroupingMode,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
@@ -31,6 +34,7 @@ export class DetailController {
     this.showInfoRectangle = showInfoRectangle;
     this.infoRectanglePlacement = infoRectanglePlacement;
     this.enableLocalLayoutOptimization = enableLocalLayoutOptimization;
+    this.cardGroupingMode = cardGroupingMode;
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -56,6 +60,11 @@ export class DetailController {
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
     this.enableLocalLayoutOptimization = enabled;
     this.regionRenderer?.setLocalLayoutOptimizationEnabled(enabled);
+  }
+
+  public setCardGroupingMode(mode: CardGroupingMode): void {
+    this.cardGroupingMode = mode;
+    this.regionRenderer?.setCardGroupingMode(mode);
   }
 
   public openRegion(selection: RegionSelection, data: ProcessedData): void {
@@ -84,6 +93,7 @@ export class DetailController {
       this.showInfoRectangle,
       this.infoRectanglePlacement,
       this.enableLocalLayoutOptimization,
+      this.cardGroupingMode,
     );
     void this.regionRenderer.render(selection, data).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;
