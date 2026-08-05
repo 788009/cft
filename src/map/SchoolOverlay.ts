@@ -823,9 +823,11 @@ export class SchoolOverlay {
       const projected = getProjectedPoint(projection, card.latitude, card.longitude);
       if (!projected) return [];
       const [x, y] = transform.apply([projected.x, projected.y]);
+      const anchor = { x, y };
+      if (!containsPoint(this.currentInfoRect, anchor)) return [];
       return [{
         id: card.id,
-        anchor: { x, y },
+        anchor,
         middleSchoolAnchor,
         studentCount: card.schools.reduce(
           (count, school) => count + school.students.length,

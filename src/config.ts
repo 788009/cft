@@ -190,8 +190,8 @@ export const defaultConfig: AppConfig = {
   showMiddleSchool: true,
   enableLocalLayoutOptimization: false,
   middleSchoolStyle: {
-    markerRadius: 5,
-    haloRadius: 11,
+    markerRadius: 3.5,
+    haloRadius: 7,
     lineMinWidth: 1.5,
     lineMaxWidth: 6,
     lineLogarithmicStep: 1.1,

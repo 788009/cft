@@ -462,10 +462,26 @@ test('renders middle school connections and keeps them synchronized with map anc
   await toggle.click();
   await page.getByTestId('close-settings-dialog').click();
 
-  const firstLine = lines.first();
-  const endpointBeforeZoom = await firstLine.getAttribute('x2');
+  const middleSchoolXBeforeZoom = Number(await overlay.getAttribute('data-middle-school-x'));
   await zoomMapToScale(page, 3);
-  await expect.poll(() => firstLine.getAttribute('x2')).not.toBe(endpointBeforeZoom);
+  await expect.poll(async () => Number(await overlay.getAttribute('data-middle-school-x')))
+    .not.toBe(middleSchoolXBeforeZoom);
+  const infoRectangle = map.locator('rect.info-rectangle');
+  const range = {
+    x: Number(await infoRectangle.getAttribute('x')),
+    y: Number(await infoRectangle.getAttribute('y')),
+    width: Number(await infoRectangle.getAttribute('width')),
+    height: Number(await infoRectangle.getAttribute('height')),
+  };
+  const endpoints = await lines.evaluateAll((nodes) => nodes.map((node) => ({
+    x: Number(node.getAttribute('x2')),
+    y: Number(node.getAttribute('y2')),
+  })));
+  expect(endpoints.length).toBeGreaterThan(0);
+  expect(endpoints.every((endpoint) => (
+    endpoint.x >= range.x && endpoint.x <= range.x + range.width &&
+    endpoint.y >= range.y && endpoint.y <= range.y + range.height
+  ))).toBe(true);
 
   const svg = map.locator('svg');
   const box = await svg.boundingBox();
@@ -476,7 +492,14 @@ test('renders middle school connections and keeps them synchronized with map anc
   await page.mouse.up();
   await expect.poll(async () => Number(await overlay.getAttribute('data-middle-school-x')))
     .toBeGreaterThan(box.width);
-  await expect(lines).not.toHaveCount(0);
+  const pannedEndpoints = await lines.evaluateAll((nodes) => nodes.map((node) => ({
+    x: Number(node.getAttribute('x2')),
+    y: Number(node.getAttribute('y2')),
+  })));
+  expect(pannedEndpoints.every((endpoint) => (
+    endpoint.x >= range.x && endpoint.x <= range.x + range.width &&
+    endpoint.y >= range.y && endpoint.y <= range.y + range.height
+  ))).toBe(true);
 });
 
 test('keeps two-column region card text inside the card without overlaps', async ({ page }) => {
