@@ -115,6 +115,7 @@ export interface AppConfig {
     defaultHeight: number;
     initialMapAspectRatio: number;
     menuReservedRatio: number;
+    fontScaleAreaRootRatio: number;
     defaultFontScaleMultiplier: number;
     minDimension: number;
     maxDimension: number;
@@ -239,6 +240,7 @@ export const defaultConfig: AppConfig = {
     defaultHeight: 1800,
     initialMapAspectRatio: 1.6,
     menuReservedRatio: 1 / 3,
+    fontScaleAreaRootRatio: 1170,
     defaultFontScaleMultiplier: 1,
     minDimension: 512,
     maxDimension: 8192,

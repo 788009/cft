@@ -8,7 +8,7 @@ describe('save image state', () => {
       height: 1800,
       aspectRatio: 1.6,
       fontScaleMultiplier: 1,
-      fontScale: 1,
+      fontScale: 1.9460170216420796,
     });
   });
 
@@ -28,12 +28,6 @@ describe('save image state', () => {
       height: 1440,
       aspectRatio: 5 / 3,
     });
-  });
-
-  it('combines area-derived font scaling with a temporary multiplier', () => {
-    const state = new SaveImageState({ width: 1440, height: 900 });
-    expect(state.getSnapshot().fontScale).toBe(0.5);
-    expect(state.setFontScaleMultiplier(1.4).fontScale).toBeCloseTo(0.7);
   });
 
   it('constrains linked dimensions to the configured pixel limit', () => {

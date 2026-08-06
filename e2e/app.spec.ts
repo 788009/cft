@@ -480,10 +480,10 @@ test('enters save image mode with a shared settings menu and restores the main c
     .toBe(initialStudentSize);
   await expect.poll(async () => Number(
     await map.locator('g.school-overlay').getAttribute('data-label-scale'),
-  )).toBeCloseTo(2 / 3, 5);
+  )).toBeCloseTo(1 / 3, 5);
   await expect.poll(async () => Number(
     await map.locator('g.school-label').first().getAttribute('data-label-scale'),
-  )).toBeCloseTo(2 / 3, 5);
+  )).toBeCloseTo(1 / 3, 5);
 
   const mapBox = await map.boundingBox();
   const menuBox = await menu.boundingBox();

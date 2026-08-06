@@ -90,11 +90,11 @@ describe('save image geometry', () => {
   it('scales default font size with the square root of map area', () => {
     expect(calculateAreaFontScale(
       { width: 1440, height: 900 },
-      { width: 2880, height: 1800 },
+      Math.sqrt(2880 * 1800),
     )).toBe(0.5);
     expect(calculateAreaFontScale(
       { width: 5760, height: 3600 },
-      { width: 2880, height: 1800 },
+      Math.sqrt(2880 * 1800),
       1.25,
     )).toBe(2.5);
   });

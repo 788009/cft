@@ -29,17 +29,13 @@ export class SaveImageState {
   }
 
   public getSnapshot(): SaveImageStateSnapshot {
-    const referenceDimensions = {
-      width: defaultConfig.export.defaultWidth,
-      height: defaultConfig.export.defaultHeight,
-    };
     return {
       ...this.dimensions,
       aspectRatio: this.dimensions.width / this.dimensions.height,
       fontScaleMultiplier: this.fontScaleMultiplier,
       fontScale: calculateAreaFontScale(
         this.dimensions,
-        referenceDimensions,
+        defaultConfig.export.fontScaleAreaRootRatio,
         this.fontScaleMultiplier,
       ),
     };

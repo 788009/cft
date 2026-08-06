@@ -158,14 +158,13 @@ export function scaleImageDimensionsForMapResize(
 
 export function calculateAreaFontScale(
   dimensions: ImageDimensions,
-  referenceDimensions: ImageDimensions,
+  areaRootRatio: number,
   multiplier = 1,
 ): number {
   const area = positive(dimensions.width, 'dimensions.width') *
     positive(dimensions.height, 'dimensions.height');
-  const referenceArea = positive(referenceDimensions.width, 'referenceDimensions.width') *
-    positive(referenceDimensions.height, 'referenceDimensions.height');
-  return Math.sqrt(area / referenceArea) * positive(multiplier, 'multiplier');
+  return Math.sqrt(area) / positive(areaRootRatio, 'areaRootRatio') *
+    positive(multiplier, 'multiplier');
 }
 
 function rectFromSize(width: number, height: number): Rect {

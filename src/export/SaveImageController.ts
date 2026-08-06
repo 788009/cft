@@ -195,7 +195,7 @@ export class SaveImageController {
     const snapshot = this.state.getSnapshot();
     return calculateAreaFontScale(
       { width: this.layout.mapRect.width, height: this.layout.mapRect.height },
-      { width: window.innerWidth, height: window.innerHeight },
+      defaultConfig.export.fontScaleAreaRootRatio,
       snapshot.fontScaleMultiplier,
     );
   }
