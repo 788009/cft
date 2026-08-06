@@ -228,7 +228,6 @@ export class AppController {
       });
       this.renderer = renderer;
       renderer.setRegionSelectionEnabled(!this.saveImage);
-      renderer.setSaveImageCardDraggingEnabled(Boolean(this.saveImage));
       renderer.setSaveImageFontScale(this.saveImageFontScale);
       renderer.setSaveImageVisualScale(this.saveImageVisualScale);
       renderer.setData(data);
@@ -276,7 +275,6 @@ export class AppController {
     this.settings.setButtonVisible(false);
     this.search.setVisible(false);
     this.renderer?.setRegionSelectionEnabled(false);
-    this.renderer?.setSaveImageCardDraggingEnabled(true);
     this.saveImage = new SaveImageController(this.uiContainer, this.settings, {
       onExit: () => this.finishSaveImageMode(),
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
@@ -299,7 +297,7 @@ export class AppController {
     this.renderer?.setSaveImageFontScale(1);
     this.renderer?.setSaveImageVisualScale(1);
     this.renderer?.setRegionSelectionEnabled(true);
-    this.renderer?.setSaveImageCardDraggingEnabled(false);
+    this.renderer?.rearrangeCards();
     this.restoreMapViewport();
     this.settings.setButtonVisible(true);
     this.search.setVisible(true);

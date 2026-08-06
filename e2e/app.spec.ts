@@ -811,7 +811,7 @@ test('drags save image cards with normalized positions and rearranges them', asy
   );
 
   await page.getByTestId('exit-save-image-mode').click();
-  await expect(overlay).toHaveAttribute('data-card-dragging-enabled', 'false');
+  await expect(overlay).toHaveAttribute('data-card-dragging-enabled', 'true');
   const normalLabel = map.locator('g.school-label').first();
   await expect(normalLabel).toBeVisible();
   const normalBox = await normalLabel.locator('rect.school-label-background').boundingBox();
@@ -824,7 +824,7 @@ test('drags save image cards with normalized positions and rearranges them', asy
     { steps: 4 },
   );
   await page.mouse.up();
-  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
 });
 
 test('clears manual card positions when the save image layout must reflow', async ({ page }) => {
@@ -864,6 +864,79 @@ test('clears manual card positions when the save image layout must reflow', asyn
   await page.getByTestId('interaction-mode-hide-and-reflow').click();
   await dragFirstCard();
   await zoomMapToScale(page, 3);
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+});
+
+test('keeps or clears dragged map cards according to the interaction mode', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const overlay = map.locator('g.school-overlay');
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('interaction-mode-stable').click();
+  await page.getByTestId('close-settings-dialog').click();
+
+  const label = map.locator('g.school-label').first();
+  const background = label.locator('rect.school-label-background');
+  const backgroundBox = await background.boundingBox();
+  if (!backgroundBox) throw new Error('普通地图信息卡片没有可用尺寸');
+  await page.mouse.move(
+    backgroundBox.x + backgroundBox.width / 2,
+    backgroundBox.y + backgroundBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    backgroundBox.x + backgroundBox.width / 2 + 36,
+    backgroundBox.y + backgroundBox.height / 2 + 24,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
+  const draggedX = await label.getAttribute('data-label-x');
+  const draggedY = await label.getAttribute('data-label-y');
+
+  const svgBox = await svg.boundingBox();
+  if (!svgBox) throw new Error('地图 SVG 没有可用尺寸');
+  await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    svgBox.x + svgBox.width / 2 + 12,
+    svgBox.y + svgBox.height / 2 + 8,
+    { steps: 2 },
+  );
+  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
+  await expect(label).toHaveAttribute('data-label-x', draggedX ?? '');
+  await expect(label).toHaveAttribute('data-label-y', draggedY ?? '');
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('interaction-mode-hide-and-reflow').click();
+  await page.getByTestId('close-settings-dialog').click();
+
+  const nextBackgroundBox = await background.boundingBox();
+  if (!nextBackgroundBox) throw new Error('普通地图信息卡片没有可用尺寸');
+  await page.mouse.move(
+    nextBackgroundBox.x + nextBackgroundBox.width / 2,
+    nextBackgroundBox.y + nextBackgroundBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    nextBackgroundBox.x + nextBackgroundBox.width / 2 + 30,
+    nextBackgroundBox.y + nextBackgroundBox.height / 2 + 20,
+    { steps: 3 },
+  );
+  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
+
+  await page.mouse.move(svgBox.x + svgBox.width / 2, svgBox.y + svgBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    svgBox.x + svgBox.width / 2 + 12,
+    svgBox.y + svgBox.height / 2 + 8,
+    { steps: 2 },
+  );
+  await page.mouse.up();
   await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
 });
 
@@ -1737,6 +1810,30 @@ test('opens a static province detail scene with every indexed school', async ({ 
 
   const expectedSchoolCount = Number(await detailMap.getAttribute('data-region-school-count'));
   await expect(detailMap.locator('text.card-university')).toHaveCount(expectedSchoolCount);
+  const detailOverlay = detailMap.locator('g.school-overlay');
+  await expect(detailOverlay).toHaveAttribute('data-card-dragging-enabled', 'true');
+  const detailLabel = detailMap.locator('g.school-label').first();
+  const detailLabelBackground = detailLabel.locator('rect.school-label-background');
+  const detailLabelBox = await detailLabelBackground.boundingBox();
+  if (!detailLabelBox) throw new Error('地区详情信息卡片没有可用尺寸');
+  const detailLabelX = Number(await detailLabel.getAttribute('data-label-x'));
+  const detailLabelY = Number(await detailLabel.getAttribute('data-label-y'));
+  const detailDeltaX = detailLabelX < 300 ? 30 : -30;
+  const detailDeltaY = detailLabelY < 200 ? 20 : -20;
+  await page.mouse.move(
+    detailLabelBox.x + detailLabelBox.width / 2,
+    detailLabelBox.y + detailLabelBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    detailLabelBox.x + detailLabelBox.width / 2 + detailDeltaX,
+    detailLabelBox.y + detailLabelBox.height / 2 + detailDeltaY,
+    { steps: 3 },
+  );
+  await page.mouse.up();
+  await expect(detailOverlay).toHaveAttribute('data-manual-card-count', '1');
+  await expect.poll(() => detailLabel.getAttribute('data-label-x')).not.toBe(String(detailLabelX));
+
   const initialGeometryTransform = await detailMap.locator('.region-detail-geometry').getAttribute('transform');
   const detailBox = await detailMap.boundingBox();
   if (!detailBox) throw new Error('地区详情地图没有可用尺寸');

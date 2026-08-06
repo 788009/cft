@@ -80,6 +80,7 @@ export class RegionDetailRenderer {
       enableLocalLayoutOptimization,
     });
     this.overlay.setCardGroupingMode(cardGroupingMode);
+    this.overlay.setCardDraggingEnabled(true);
     this.overlay.setMapLevel('city');
     this.resizeObserver = new ResizeObserver(() => this.updateScene());
     this.resizeObserver.observe(container);

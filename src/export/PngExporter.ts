@@ -84,6 +84,7 @@ export async function exportMapToPng(request: PngExportRequest): Promise<void> {
       showMiddleSchool: request.settings.showMiddleSchool,
       enableLocalLayoutOptimization: request.settings.enableLocalLayoutOptimization,
       infoRectanglePlacement: request.settings.infoRectanglePlacement,
+      cardDraggingEnabled: false,
     });
     renderer.setRegionSelectionEnabled(false);
     renderer.setSaveImageFontScale(request.fontScale);

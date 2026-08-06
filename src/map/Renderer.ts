@@ -49,6 +49,7 @@ export interface MapRendererOptions {
   enableLocalLayoutOptimization?: boolean;
   infoRectanglePlacement?: InfoRectanglePlacement;
   onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
+  cardDraggingEnabled?: boolean;
 }
 
 export interface MapRendererSnapshot {
@@ -159,6 +160,7 @@ export class MapRenderer {
       showMiddleSchool: options.showMiddleSchool,
     });
     this.schoolOverlay.setCardGroupingMode(this.cardGroupingMode);
+    this.schoolOverlay.setCardDraggingEnabled(options.cardDraggingEnabled ?? true);
 
     this.projection = createProjection(width, height);
     this.pathGenerator = d3.geoPath().projection(this.projection);
@@ -264,11 +266,6 @@ export class MapRenderer {
       .attr('tabindex', enabled ? 0 : null);
     this.updateRegionInteractionAvailability();
     if (!enabled) this.schoolOverlay.clearHoveredRegion();
-  }
-
-  public setSaveImageCardDraggingEnabled(enabled: boolean): void {
-    this.schoolOverlay.setCardDraggingEnabled(enabled);
-    this.updateSchoolOverlay();
   }
 
   public rearrangeCards(): void {
