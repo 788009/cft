@@ -3,6 +3,7 @@ import {
   expandRectWithinBounds,
   getDefaultInfoRectanglePlacement,
   getInfoRectangle,
+  getInfoRectangleMode,
   getInfoRectanglePlacement,
   moveInfoRectangle,
   resizeInfoRectangle,
@@ -11,7 +12,12 @@ import {
 const bounds = { x: 20, y: 20, width: 960, height: 560 };
 
 describe('information rectangle editing', () => {
-  it('resolves the configurable landscape default as a centered rectangle', () => {
+  it('switches range modes at the configurable narrow-screen boundary', () => {
+    expect(getInfoRectangleMode(701, 1000)).toBe('wide');
+    expect(getInfoRectangleMode(700, 1000)).toBe('narrow');
+  });
+
+  it('resolves the configurable wide-screen default as a centered rectangle', () => {
     const placement = getDefaultInfoRectanglePlacement(1000, 600);
     expect(placement).toEqual({
       xRatio: 0.25,
@@ -27,7 +33,7 @@ describe('information rectangle editing', () => {
     });
   });
 
-  it('uses a centered rotated-similar rectangle across the portrait width', () => {
+  it('uses a centered rotated-similar rectangle across the narrow-screen width', () => {
     const placement = getDefaultInfoRectanglePlacement(600, 900);
     expect(placement).toEqual({
       xRatio: 0,

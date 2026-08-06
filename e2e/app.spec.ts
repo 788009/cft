@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { centerDomesticSchools, zoomMapToScale } from './helpers';
 
-test('renders in both orientations and resets the default range on orientation changes', async ({ page }) => {
+test('switches default range geometry at the wide and narrow screen boundary', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await page.goto('/');
 
@@ -13,6 +13,12 @@ test('renders in both orientations and resets the default range on orientation c
   await expect(infoRectangle).toHaveAttribute('y', '150');
   await expect(infoRectangle).toHaveAttribute('width', '450');
   await expect(infoRectangle).toHaveAttribute('height', '300');
+
+  await page.setViewportSize({ width: 700, height: 900 });
+  await expect(infoRectangle).toHaveAttribute('x', '175');
+  await expect(infoRectangle).toHaveAttribute('y', '225');
+  await expect(infoRectangle).toHaveAttribute('width', '350');
+  await expect(infoRectangle).toHaveAttribute('height', '450');
 
   await page.setViewportSize({ width: 600, height: 900 });
   await expect(map.locator('svg')).toBeVisible();

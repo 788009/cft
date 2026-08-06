@@ -18,6 +18,21 @@ export type InfoRectangleResizeHandle =
   | 'w'
   | 'nw';
 
+export type InfoRectangleMode = 'wide' | 'narrow';
+
+export function getInfoRectangleMode(
+  viewportWidth: number,
+  viewportHeight: number,
+): InfoRectangleMode {
+  if (
+    viewportWidth > 0 &&
+    viewportHeight / viewportWidth >= defaultConfig.infoRectangleNarrowModeMinHeightWidthRatio
+  ) {
+    return 'narrow';
+  }
+  return 'wide';
+}
+
 export function getDefaultInfoRectanglePlacement(
   viewportWidth?: number,
   viewportHeight?: number,
@@ -27,9 +42,9 @@ export function getDefaultInfoRectanglePlacement(
   if (
     viewportWidth !== undefined &&
     viewportHeight !== undefined &&
-    viewportHeight > viewportWidth
+    getInfoRectangleMode(viewportWidth, viewportHeight) === 'narrow'
   ) {
-    widthRatio = defaultConfig.portraitInfoRectangleWidthRatio;
+    widthRatio = defaultConfig.narrowInfoRectangleWidthRatio;
     heightRatio = widthRatio * (viewportWidth / viewportHeight) ** 2;
   }
   return {

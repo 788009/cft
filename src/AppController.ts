@@ -13,6 +13,7 @@ import { ThemeController } from '@/theme/ThemeController';
 import { BackgroundController } from '@/theme/BackgroundController';
 import {
   getDefaultInfoRectanglePlacement,
+  getInfoRectangleMode,
   type InfoRectanglePlacement,
 } from '@/map/InfoRectangle';
 import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorController';
@@ -163,10 +164,15 @@ export class AppController {
   }
 
   private readonly handleResize = (): void => {
-    const previousOrientation = this.viewState.getSnapshot().viewport.orientation;
+    const previousViewport = this.viewState.getSnapshot().viewport;
+    const previousMode = getInfoRectangleMode(
+      previousViewport.width,
+      previousViewport.height,
+    );
     this.viewState.updateViewport(window.innerWidth, window.innerHeight);
     const { viewport } = this.viewState.getSnapshot();
-    if (viewport.orientation !== previousOrientation) {
+    const nextMode = getInfoRectangleMode(viewport.width, viewport.height);
+    if (nextMode !== previousMode) {
       this.finishInfoRectangleEditing();
       this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
         viewport.width,
