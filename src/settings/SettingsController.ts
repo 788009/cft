@@ -12,22 +12,15 @@ import { ModalShell } from '@/details/ModalShell';
 import { loadMessageHtml } from '@/data/fetcher';
 import { createSafeMessageContent } from './message';
 import { isSupportedBackgroundImage } from '@/theme/BackgroundController';
+import {
+  SettingsStateStore,
+  type AppSettingsState,
+} from './SettingsState';
 
 interface SettingOption<T extends string> {
   value: T;
   label: string;
   testId: string;
-}
-
-export interface SettingsState {
-  interactionMode: MapInteractionMode;
-  themeMode: ThemeMode;
-  cardGroupingMode: CardGroupingMode;
-  showRegionNames: boolean;
-  onlyShowRegionNamesWithSchools: boolean;
-  showInfoRectangle: boolean;
-  showMiddleSchool: boolean;
-  enableLocalLayoutOptimization: boolean;
 }
 
 export interface SettingsCallbacks {
@@ -41,6 +34,7 @@ export interface SettingsCallbacks {
   onShowMiddleSchoolChange: (show: boolean) => void;
   onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   onEditInfoRectangle: () => void;
+  onSaveImage: () => void;
 }
 
 const MODE_OPTIONS: SettingOption<MapInteractionMode>[] = [
@@ -68,6 +62,7 @@ const CORNER_CLASSES: Record<Corner, string> = {
 
 export class SettingsController {
   private readonly container: HTMLElement;
+  private readonly stateStore: SettingsStateStore;
   private readonly button: HTMLButtonElement;
   private readonly onModeChange: (mode: MapInteractionMode) => void;
   private readonly onThemeModeChange: (mode: ThemeMode) => void;
@@ -79,6 +74,8 @@ export class SettingsController {
   private readonly onShowMiddleSchoolChange: (show: boolean) => void;
   private readonly onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   private readonly onEditInfoRectangle: () => void;
+  private readonly onSaveImage: () => void;
+  private readonly unsubscribeState: () => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
   private cardGroupingMode: CardGroupingMode;
@@ -93,10 +90,12 @@ export class SettingsController {
 
   constructor(
     container: HTMLElement,
-    initialState: SettingsState,
+    stateStore: SettingsStateStore,
     callbacks: SettingsCallbacks,
   ) {
     this.container = container;
+    this.stateStore = stateStore;
+    const initialState = stateStore.getSnapshot();
     this.mode = initialState.interactionMode;
     this.themeMode = initialState.themeMode;
     this.cardGroupingMode = initialState.cardGroupingMode;
@@ -115,6 +114,9 @@ export class SettingsController {
     this.onShowMiddleSchoolChange = callbacks.onShowMiddleSchoolChange;
     this.onLocalLayoutOptimizationChange = callbacks.onLocalLayoutOptimizationChange;
     this.onEditInfoRectangle = callbacks.onEditInfoRectangle;
+    this.onSaveImage = callbacks.onSaveImage;
+    this.backgroundFileName = initialState.backgroundFile?.name ?? null;
+    this.unsubscribeState = stateStore.subscribe((state) => this.applyState(state));
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.dataset.testid = 'settings-button';
@@ -150,6 +152,7 @@ export class SettingsController {
 
   public destroy(): void {
     this.close();
+    this.unsubscribeState();
     this.button.removeEventListener('click', this.open);
     this.button.remove();
   }
@@ -165,6 +168,10 @@ export class SettingsController {
       onClose: () => this.close(),
     });
 
+    this.shell.body.append(this.createContent(true));
+  };
+
+  public createContent(includeSaveImageEntry = false): HTMLDivElement {
     const content = document.createElement('div');
     content.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     content.append(
@@ -196,11 +203,31 @@ export class SettingsController {
         ),
         this.createLayoutOptimizationSetting(),
       ]),
+      ...(includeSaveImageEntry ? [this.createSaveImageSection()] : []),
       this.createMessageSection(),
     );
-    this.shell.body.append(content);
-    this.updateChoices();
-  };
+    this.updateChoices(content);
+    return content;
+  }
+
+  private createSaveImageSection(): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.testid = 'open-save-image-mode';
+    button.className = [
+      'flex min-h-11 w-full items-center justify-center rounded-md bg-teal-700 px-4',
+      'text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline-2',
+      'focus-visible:outline-offset-2 focus-visible:outline-teal-700',
+      'dark:bg-teal-500 dark:text-slate-950 dark:hover:bg-teal-400',
+      'dark:focus-visible:outline-teal-400',
+    ].join(' ');
+    button.textContent = '保存图片';
+    button.addEventListener('click', () => {
+      this.close();
+      this.onSaveImage();
+    });
+    return this.createSection('保存图片', [button]);
+  }
 
   private createMessageSection(): HTMLElement {
     const section = document.createElement('section');
@@ -260,8 +287,8 @@ export class SettingsController {
     clear.setAttribute('aria-label', '清除上传背景');
     clear.addEventListener('click', () => {
       input.value = '';
-      this.backgroundFileName = null;
       error.textContent = '';
+      this.stateStore.update({ backgroundFile: null });
       this.onBackgroundImageChange(null);
       this.updateBackgroundStatus(status, error, clear);
     });
@@ -282,7 +309,7 @@ export class SettingsController {
         return;
       }
       error.textContent = '';
-      this.backgroundFileName = file.name;
+      this.stateStore.update({ backgroundFile: file });
       this.onBackgroundImageChange(file);
       input.value = '';
       this.updateBackgroundStatus(status, error, clear);
@@ -462,68 +489,72 @@ export class SettingsController {
 
   private selectMode(mode: MapInteractionMode): void {
     if (mode === this.mode) return;
-    this.mode = mode;
-    this.updateChoices();
+    this.stateStore.update({ interactionMode: mode });
     this.onModeChange(mode);
   }
 
   private selectThemeMode(mode: ThemeMode): void {
     if (mode === this.themeMode) return;
-    this.themeMode = mode;
-    this.updateChoices();
+    this.stateStore.update({ themeMode: mode });
     this.onThemeModeChange(mode);
   }
 
   private selectCardGroupingMode(mode: CardGroupingMode): void {
     if (mode === this.cardGroupingMode) return;
-    this.cardGroupingMode = mode;
-    this.updateChoices();
+    this.stateStore.update({ cardGroupingMode: mode });
     this.onCardGroupingModeChange(mode);
   }
 
   private selectShowRegionNames(show: boolean): void {
     if (show === this.showRegionNames) return;
-    this.showRegionNames = show;
-    this.updateChoices();
+    this.stateStore.update({ showRegionNames: show });
     this.onShowRegionNamesChange(show);
   }
 
   private selectOnlyShowRegionNamesWithSchools(only: boolean): void {
     if (only === this.onlyShowRegionNamesWithSchools) return;
-    this.onlyShowRegionNamesWithSchools = only;
-    this.updateChoices();
+    this.stateStore.update({ onlyShowRegionNamesWithSchools: only });
     this.onOnlyShowRegionNamesWithSchoolsChange(only);
   }
 
   private selectShowInfoRectangle(show: boolean): void {
     if (show === this.showInfoRectangle) return;
-    this.showInfoRectangle = show;
-    this.updateChoices();
+    this.stateStore.update({ showInfoRectangle: show });
     this.onShowInfoRectangleChange(show);
   }
 
   private selectLocalLayoutOptimization(enabled: boolean): void {
     if (enabled === this.enableLocalLayoutOptimization) return;
-    this.enableLocalLayoutOptimization = enabled;
-    this.updateChoices();
+    this.stateStore.update({ enableLocalLayoutOptimization: enabled });
     this.onLocalLayoutOptimizationChange(enabled);
   }
 
   private selectShowMiddleSchool(show: boolean): void {
     if (show === this.showMiddleSchool) return;
-    this.showMiddleSchool = show;
-    this.updateChoices();
+    this.stateStore.update({ showMiddleSchool: show });
     this.onShowMiddleSchoolChange(show);
   }
 
-  private updateChoices(): void {
-    if (!this.shell) return;
+  private applyState(state: Readonly<AppSettingsState>): void {
+    this.mode = state.interactionMode;
+    this.themeMode = state.themeMode;
+    this.cardGroupingMode = state.cardGroupingMode;
+    this.showRegionNames = state.showRegionNames;
+    this.onlyShowRegionNamesWithSchools = state.onlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = state.showInfoRectangle;
+    this.showMiddleSchool = state.showMiddleSchool;
+    this.enableLocalLayoutOptimization = state.enableLocalLayoutOptimization;
+    this.backgroundFileName = state.backgroundFile?.name ?? null;
+    this.updateChoices();
+  }
+
+  private updateChoices(root: ParentNode = this.container): void {
     const selectedValues: Record<string, string> = {
       'interaction-mode': this.mode,
       'card-grouping-mode': this.cardGroupingMode,
       'theme-mode': this.themeMode,
     };
-    for (const choice of this.shell.body.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
+    for (const choice of root.querySelectorAll<HTMLButtonElement>('[role="radio"][data-setting]')) {
       const selectedValue = selectedValues[choice.dataset.setting ?? ''];
       const selected = choice.dataset.value === selectedValue;
       choice.setAttribute('aria-checked', String(selected));
@@ -536,20 +567,20 @@ export class SettingsController {
       choice.classList.toggle('dark:bg-slate-900', !selected);
       choice.classList.toggle('dark:text-slate-300', !selected);
     }
-    const toggle = this.shell.body.querySelector<HTMLButtonElement>('[data-testid="region-names-toggle"]');
-    const filterSetting = this.shell.body.querySelector<HTMLElement>(
+    const toggle = root.querySelector<HTMLButtonElement>('[data-testid="region-names-toggle"]');
+    const filterSetting = root.querySelector<HTMLElement>(
       '[data-testid="region-names-school-filter-setting"]',
     );
-    const filterToggle = this.shell.body.querySelector<HTMLButtonElement>(
+    const filterToggle = root.querySelector<HTMLButtonElement>(
       '[data-testid="region-names-school-filter-toggle"]',
     );
-    const infoRectangleToggle = this.shell.body.querySelector<HTMLButtonElement>(
+    const infoRectangleToggle = root.querySelector<HTMLButtonElement>(
       '[data-testid="info-rectangle-toggle"]',
     );
-    const localLayoutOptimizationToggle = this.shell.body.querySelector<HTMLButtonElement>(
+    const localLayoutOptimizationToggle = root.querySelector<HTMLButtonElement>(
       '[data-testid="local-layout-optimization-toggle"]',
     );
-    const middleSchoolToggle = this.shell.body.querySelector<HTMLButtonElement>(
+    const middleSchoolToggle = root.querySelector<HTMLButtonElement>(
       '[data-testid="middle-school-toggle"]',
     );
     this.updateSwitch(toggle, this.showRegionNames);

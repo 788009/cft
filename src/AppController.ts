@@ -20,6 +20,9 @@ import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorCon
 import { SearchController } from '@/search/SearchController';
 import type { SearchResult } from '@/logic/search';
 import type { Rect } from '@/logic/layout';
+import { SettingsStateStore } from '@/settings/SettingsState';
+import { SaveImageController } from '@/export/SaveImageController';
+import type { SaveImageModeLayout } from '@/export/geometry';
 
 export class AppController {
   private readonly mapContainer: HTMLElement;
@@ -31,6 +34,7 @@ export class AppController {
   private readonly search: SearchController;
   private readonly theme: ThemeController;
   private readonly background: BackgroundController;
+  private readonly settingsState: SettingsStateStore;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
   private showRegionNames = defaultConfig.showRegionNames;
@@ -50,11 +54,23 @@ export class AppController {
   private searchObstacles: Rect[] = [];
   private renderVersion = 0;
   private started = false;
+  private saveImage: SaveImageController | null = null;
 
   constructor() {
     this.mapContainer = this.requireElement('map-container');
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
+    this.settingsState = new SettingsStateStore({
+      interactionMode: this.interactionMode,
+      themeMode: defaultConfig.themeMode,
+      backgroundFile: null,
+      cardGroupingMode: this.cardGroupingMode,
+      showRegionNames: this.showRegionNames,
+      onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
+      showInfoRectangle: this.showInfoRectangle,
+      showMiddleSchool: this.showMiddleSchool,
+      enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
+    });
     this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
       window.innerWidth,
       window.innerHeight,
@@ -90,16 +106,7 @@ export class AppController {
     );
     this.settings = new SettingsController(
       this.uiContainer,
-      {
-        interactionMode: this.interactionMode,
-        themeMode: defaultConfig.themeMode,
-        cardGroupingMode: this.cardGroupingMode,
-        showRegionNames: this.showRegionNames,
-        onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
-        showInfoRectangle: this.showInfoRectangle,
-        showMiddleSchool: this.showMiddleSchool,
-        enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
-      },
+      this.settingsState,
       {
         onInteractionModeChange: (mode) => {
           this.interactionMode = mode;
@@ -137,6 +144,7 @@ export class AppController {
           this.details.setLocalLayoutOptimizationEnabled(enabled);
         },
         onEditInfoRectangle: () => this.beginInfoRectangleEditing(),
+        onSaveImage: () => this.beginSaveImageMode(),
       },
     );
   }
@@ -155,6 +163,9 @@ export class AppController {
     window.removeEventListener('resize', this.handleResize);
     this.renderer?.destroy();
     this.renderer = null;
+    this.saveImage?.destroy();
+    this.saveImage = null;
+    this.restoreMapViewport();
     this.details.closeAll();
     this.infoRectangleEditor.close();
     this.search.destroy();
@@ -171,6 +182,10 @@ export class AppController {
     );
     this.viewState.updateViewport(window.innerWidth, window.innerHeight);
     const { viewport } = this.viewState.getSnapshot();
+    if (this.saveImage) {
+      this.saveImage.resize(viewport.width, viewport.height);
+      return;
+    }
     const nextMode = getInfoRectangleMode(viewport.width, viewport.height);
     if (nextMode !== previousMode) {
       this.finishInfoRectangleEditing();
@@ -249,6 +264,7 @@ export class AppController {
     this.details.closeAll();
     this.settings.setButtonVisible(false);
     this.search.setVisible(false);
+    this.saveImage?.setVisible(false);
     this.renderer.setInfoRectangleEditing(true);
     this.infoRectangleEditor.open({
       onConfirm: () => this.finishInfoRectangleEditing(),
@@ -256,18 +272,66 @@ export class AppController {
     });
   }
 
+  private beginSaveImageMode(): void {
+    if (this.saveImage) return;
+    this.details.closeAll();
+    this.finishInfoRectangleEditing();
+    this.settings.setButtonVisible(false);
+    this.search.setVisible(false);
+    this.saveImage = new SaveImageController(this.uiContainer, this.settings, {
+      onExit: () => this.finishSaveImageMode(),
+      onLayoutChange: (layout) => this.applySaveImageLayout(layout),
+    });
+  }
+
+  private finishSaveImageMode(): void {
+    if (!this.saveImage) return;
+    this.saveImage.destroy();
+    this.saveImage = null;
+    this.restoreMapViewport();
+    this.settings.setButtonVisible(true);
+    this.search.setVisible(true);
+  }
+
+  private applySaveImageLayout(layout: SaveImageModeLayout): void {
+    this.mapContainer.style.left = '0';
+    this.mapContainer.style.top = '0';
+    this.mapContainer.style.right = 'auto';
+    this.mapContainer.style.bottom = 'auto';
+    this.mapContainer.style.width = `${layout.mapRect.width}px`;
+    this.mapContainer.style.height = `${layout.mapRect.height}px`;
+    this.renderer?.resize(layout.mapRect.width, layout.mapRect.height);
+  }
+
+  private restoreMapViewport(): void {
+    this.mapContainer.style.left = '';
+    this.mapContainer.style.top = '';
+    this.mapContainer.style.right = '';
+    this.mapContainer.style.bottom = '';
+    this.mapContainer.style.width = '';
+    this.mapContainer.style.height = '';
+    this.renderer?.resize(window.innerWidth, window.innerHeight);
+  }
+
   private finishInfoRectangleEditing(): void {
     if (!this.infoRectangleEditing) return;
     this.infoRectangleEditing = false;
     this.renderer?.setInfoRectangleEditing(false);
     this.infoRectangleEditor.close();
-    this.settings.setButtonVisible(true);
-    this.search.setVisible(true);
+    if (this.saveImage) {
+      this.saveImage.setVisible(true);
+    } else {
+      this.settings.setButtonVisible(true);
+      this.search.setVisible(true);
+    }
   }
 
   private resetInfoRectanglePlacement(): void {
-    const { viewport } = this.viewState.getSnapshot();
-    const placement = getDefaultInfoRectanglePlacement(viewport.width, viewport.height);
+    const mainViewport = this.viewState.getSnapshot().viewport;
+    const mapRect = this.saveImage?.getLayout().mapRect;
+    const width = mapRect?.width ?? mainViewport.width;
+    const height = mapRect?.height ?? mainViewport.height;
+    const placement = getDefaultInfoRectanglePlacement(width, height);
     this.infoRectanglePlacement = placement;
     this.renderer?.setInfoRectanglePlacement(placement);
     this.details.setInfoRectanglePlacement(placement);

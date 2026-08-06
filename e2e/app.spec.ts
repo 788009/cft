@@ -454,6 +454,60 @@ test('shows the sanitized message as the final settings section', async ({ page 
     .toHaveCount(0);
 });
 
+test('enters save image mode with a shared settings menu and restores the main controls', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  const mode = page.getByTestId('save-image-mode');
+  const menu = page.getByTestId('save-image-menu');
+  const map = page.getByTestId('map-container');
+  await expect(mode).toBeVisible();
+  await expect(page.getByTestId('settings-button')).toBeHidden();
+  await expect(page.getByTestId('search-control')).toBeHidden();
+  await expect(page.getByTestId('save-image-button')).toBeDisabled();
+  await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
+  await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
+
+  const mapBox = await map.boundingBox();
+  const menuBox = await menu.boundingBox();
+  expect(mapBox).toMatchObject({ x: 0, y: 0, width: 960, height: 600 });
+  expect(menuBox).toMatchObject({ x: 960, y: 0, width: 480, height: 600 });
+
+  await page.getByTestId('theme-mode-dark').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme-mode', 'dark');
+  await page.getByTestId('exit-save-image-mode').click();
+  await expect(mode).toHaveCount(0);
+  await expect(page.getByTestId('settings-button')).toBeVisible();
+  await expect(page.getByTestId('search-control')).toBeVisible();
+  await expect(map).toHaveCSS('width', '1440px');
+  await expect(map).toHaveCSS('height', '900px');
+
+  await page.getByTestId('settings-button').click();
+  await expect(page.getByTestId('theme-mode-dark')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('links temporary save image dimensions without changing the map ratio', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  const width = page.getByTestId('save-image-width');
+  const height = page.getByTestId('save-image-height');
+  await width.fill('3200');
+  await width.blur();
+  await expect(height).toHaveValue('2000');
+  await height.fill('1600');
+  await height.blur();
+  await expect(width).toHaveValue('2560');
+
+  await page.getByTestId('exit-save-image-mode').click();
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+  await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
+  await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
+});
+
 test('keeps local layout optimization optional and disabled by default', async ({ page }) => {
   await page.goto('/');
 
