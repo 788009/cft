@@ -1,6 +1,7 @@
 import type { ThemeMode } from '@/config';
 
 export type ResolvedTheme = 'light' | 'dark';
+export type ResolvedThemeChangeHandler = (theme: ResolvedTheme) => void;
 
 export function resolveTheme(mode: ThemeMode, systemPrefersDark: boolean): ResolvedTheme {
   if (mode === 'system') return systemPrefersDark ? 'dark' : 'light';
@@ -10,9 +11,11 @@ export function resolveTheme(mode: ThemeMode, systemPrefersDark: boolean): Resol
 export class ThemeController {
   private readonly mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private mode: ThemeMode;
+  private readonly onResolvedThemeChange?: ResolvedThemeChangeHandler;
 
-  constructor(initialMode: ThemeMode) {
+  constructor(initialMode: ThemeMode, onResolvedThemeChange?: ResolvedThemeChangeHandler) {
     this.mode = initialMode;
+    this.onResolvedThemeChange = onResolvedThemeChange;
     this.mediaQuery.addEventListener('change', this.handleSystemThemeChange);
     this.apply();
   }
@@ -36,5 +39,6 @@ export class ThemeController {
     document.documentElement.dataset.themeMode = this.mode;
     document.documentElement.dataset.resolvedTheme = resolved;
     document.documentElement.style.colorScheme = resolved;
+    this.onResolvedThemeChange?.(resolved);
   }
 }

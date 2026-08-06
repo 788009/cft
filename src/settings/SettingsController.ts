@@ -1,4 +1,6 @@
 import settingsIconUrl from '@/assets/icons/settings.svg';
+import uploadIconUrl from '@/assets/icons/upload.svg';
+import closeIconUrl from '@/assets/icons/x.svg';
 import {
   defaultConfig,
   type CardGroupingMode,
@@ -9,6 +11,7 @@ import {
 import { ModalShell } from '@/details/ModalShell';
 import { loadMessageHtml } from '@/data/fetcher';
 import { createSafeMessageContent } from './message';
+import { isSupportedBackgroundImage } from '@/theme/BackgroundController';
 
 interface SettingOption<T extends string> {
   value: T;
@@ -30,6 +33,7 @@ export interface SettingsState {
 export interface SettingsCallbacks {
   onInteractionModeChange: (mode: MapInteractionMode) => void;
   onThemeModeChange: (mode: ThemeMode) => void;
+  onBackgroundImageChange: (file: File | null) => void;
   onCardGroupingModeChange: (mode: CardGroupingMode) => void;
   onShowRegionNamesChange: (show: boolean) => void;
   onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
@@ -67,6 +71,7 @@ export class SettingsController {
   private readonly button: HTMLButtonElement;
   private readonly onModeChange: (mode: MapInteractionMode) => void;
   private readonly onThemeModeChange: (mode: ThemeMode) => void;
+  private readonly onBackgroundImageChange: (file: File | null) => void;
   private readonly onCardGroupingModeChange: (mode: CardGroupingMode) => void;
   private readonly onShowRegionNamesChange: (show: boolean) => void;
   private readonly onOnlyShowRegionNamesWithSchoolsChange: (only: boolean) => void;
@@ -84,6 +89,7 @@ export class SettingsController {
   private enableLocalLayoutOptimization: boolean;
   private shell: ModalShell | null = null;
   private messageHtmlPromise: Promise<string> | null = null;
+  private backgroundFileName: string | null = null;
 
   constructor(
     container: HTMLElement,
@@ -101,6 +107,7 @@ export class SettingsController {
     this.enableLocalLayoutOptimization = initialState.enableLocalLayoutOptimization;
     this.onModeChange = callbacks.onInteractionModeChange;
     this.onThemeModeChange = callbacks.onThemeModeChange;
+    this.onBackgroundImageChange = callbacks.onBackgroundImageChange;
     this.onCardGroupingModeChange = callbacks.onCardGroupingModeChange;
     this.onShowRegionNamesChange = callbacks.onShowRegionNamesChange;
     this.onOnlyShowRegionNamesWithSchoolsChange = callbacks.onOnlyShowRegionNamesWithSchoolsChange;
@@ -169,6 +176,7 @@ export class SettingsController {
           THEME_OPTIONS,
           (value) => this.selectThemeMode(value),
         ),
+        this.createBackgroundSetting(),
       ]),
       this.createSection('地图信息', [this.createMapInformationSettings()]),
       this.createSection('信息卡片', [
@@ -201,6 +209,99 @@ export class SettingsController {
     section.setAttribute('aria-busy', 'true');
     void this.loadMessage(section);
     return section;
+  }
+
+  private createBackgroundSetting(): HTMLElement {
+    const setting = document.createElement('div');
+    setting.className = 'grid gap-2';
+    const label = document.createElement('span');
+    label.className = 'text-sm text-slate-600 dark:text-slate-400';
+    label.textContent = '背景图片';
+
+    const controls = document.createElement('div');
+    controls.className = 'flex items-center gap-2';
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp';
+    input.dataset.testid = 'background-image-input';
+    input.className = 'hidden';
+    const choose = document.createElement('button');
+    choose.type = 'button';
+    choose.dataset.testid = 'background-image-button';
+    choose.className = [
+      'inline-flex min-h-11 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium',
+      'text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus-visible:outline-teal-400',
+    ].join(' ');
+    const uploadIcon = document.createElement('img');
+    uploadIcon.src = uploadIconUrl;
+    uploadIcon.alt = '';
+    uploadIcon.className = 'h-4 w-4 dark:invert';
+    uploadIcon.setAttribute('aria-hidden', 'true');
+    choose.append(uploadIcon, document.createTextNode('选择图片'));
+    choose.addEventListener('click', () => input.click());
+
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.dataset.testid = 'clear-background-image';
+    clear.className = [
+      'flex h-11 w-11 items-center justify-center rounded-md border border-slate-300 text-slate-600',
+      'hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus-visible:outline-teal-400',
+      'disabled:cursor-not-allowed disabled:opacity-50',
+    ].join(' ');
+    const clearIcon = document.createElement('img');
+    clearIcon.src = closeIconUrl;
+    clearIcon.alt = '';
+    clearIcon.className = 'h-4 w-4 dark:invert';
+    clearIcon.setAttribute('aria-hidden', 'true');
+    clear.append(clearIcon);
+    clear.title = '清除上传背景';
+    clear.setAttribute('aria-label', '清除上传背景');
+    clear.addEventListener('click', () => {
+      input.value = '';
+      this.backgroundFileName = null;
+      error.textContent = '';
+      this.onBackgroundImageChange(null);
+      this.updateBackgroundStatus(status, error, clear);
+    });
+
+    const status = document.createElement('span');
+    status.dataset.testid = 'background-image-name';
+    status.className = 'min-w-0 truncate text-xs text-slate-500 dark:text-slate-400';
+    const error = document.createElement('p');
+    error.dataset.testid = 'background-image-error';
+    error.className = 'hidden text-xs text-red-700 dark:text-red-400';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0] ?? null;
+      if (!file) return;
+      if (!isSupportedBackgroundImage(file)) {
+        error.textContent = '仅支持 PNG、JPEG 和 WebP 图片';
+        error.classList.remove('hidden');
+        input.value = '';
+        return;
+      }
+      error.textContent = '';
+      this.backgroundFileName = file.name;
+      this.onBackgroundImageChange(file);
+      input.value = '';
+      this.updateBackgroundStatus(status, error, clear);
+    });
+    this.updateBackgroundStatus(status, error, clear);
+    controls.append(input, choose, clear, status);
+    setting.append(label, controls, error);
+    return setting;
+  }
+
+  private updateBackgroundStatus(
+    status: HTMLElement,
+    error: HTMLElement,
+    clear: HTMLButtonElement,
+  ): void {
+    status.textContent = this.backgroundFileName ?? '';
+    status.classList.toggle('hidden', !this.backgroundFileName);
+    error.classList.toggle('hidden', !error.textContent);
+    clear.disabled = !this.backgroundFileName;
   }
 
   private async loadMessage(section: HTMLElement): Promise<void> {

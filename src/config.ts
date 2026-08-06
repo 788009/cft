@@ -83,6 +83,10 @@ export interface AppConfig {
   mapInteractionMode: MapInteractionMode;
   cardGroupingMode: CardGroupingMode;
   themeMode: ThemeMode;
+  backgroundImages: {
+    light: string | null;
+    dark: string | null;
+  };
   showRegionNames: boolean;
   onlyShowRegionNamesWithSchools: boolean;
   showInfoRectangle: boolean;
@@ -198,6 +202,10 @@ export const defaultConfig: AppConfig = {
   mapInteractionMode: 'stable',
   cardGroupingMode: 'region',
   themeMode: 'system',
+  backgroundImages: {
+    light: null,
+    dark: null,
+  },
   showRegionNames: true,
   onlyShowRegionNamesWithSchools: true,
   showInfoRectangle: false,

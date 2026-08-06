@@ -10,6 +10,7 @@ import {
 } from '@/config';
 import { SettingsController } from '@/settings/SettingsController';
 import { ThemeController } from '@/theme/ThemeController';
+import { BackgroundController } from '@/theme/BackgroundController';
 import {
   getDefaultInfoRectanglePlacement,
   type InfoRectanglePlacement,
@@ -29,6 +30,7 @@ export class AppController {
   private readonly infoRectangleEditor: InfoRectangleEditorController;
   private readonly search: SearchController;
   private readonly theme: ThemeController;
+  private readonly background: BackgroundController;
   private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
   private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
   private showRegionNames = defaultConfig.showRegionNames;
@@ -63,7 +65,14 @@ export class AppController {
       this.enableLocalLayoutOptimization,
       this.cardGroupingMode,
     );
-    this.theme = new ThemeController(defaultConfig.themeMode);
+    this.background = new BackgroundController(
+      this.mapContainer,
+      defaultConfig.backgroundImages,
+    );
+    this.theme = new ThemeController(
+      defaultConfig.themeMode,
+      (resolvedTheme) => this.background.setTheme(resolvedTheme),
+    );
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
     this.search = new SearchController(
       this.uiContainer,
@@ -94,6 +103,7 @@ export class AppController {
           this.renderer?.setInteractionMode(mode);
         },
         onThemeModeChange: (mode) => this.theme.setMode(mode),
+        onBackgroundImageChange: (file) => this.background.setUploadedFile(file),
         onCardGroupingModeChange: (mode) => {
           this.cardGroupingMode = mode;
           this.renderer?.setCardGroupingMode(mode);
@@ -147,6 +157,7 @@ export class AppController {
     this.search.destroy();
     this.settings.destroy();
     this.theme.destroy();
+    this.background.destroy();
   }
 
   private readonly handleResize = (): void => {

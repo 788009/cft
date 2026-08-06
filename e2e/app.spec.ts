@@ -590,6 +590,51 @@ test('follows the browser color scheme and supports explicit theme settings', as
   await expect(root).toHaveClass(/dark/);
 });
 
+test('uploads one background for both themes and restores configured backgrounds when cleared', async ({ page }) => {
+  await page.goto('/');
+
+  const map = page.getByTestId('map-container');
+  await page.getByTestId('settings-button').click();
+  const input = page.getByTestId('background-image-input');
+  const clear = page.getByTestId('clear-background-image');
+  await page.getByTestId('theme-mode-light').click();
+  const configuredLightBackground = await map.evaluate((element) => element.style.backgroundImage);
+  await expect(clear).toBeDisabled();
+  await input.setInputFiles('src/assets/hero.png');
+  await expect(page.getByTestId('background-image-name')).toHaveText('hero.png');
+  await expect(clear).toBeEnabled();
+
+  const uploadedBackground = await map.evaluate((element) => ({
+    image: element.style.backgroundImage,
+    size: element.style.backgroundSize,
+    position: element.style.backgroundPosition,
+    repeat: element.style.backgroundRepeat,
+  }));
+  expect(uploadedBackground.image).toMatch(/^url\(["']?blob:/);
+  expect(uploadedBackground.size).toBe('cover');
+  expect(uploadedBackground.position).toBe('center center');
+  expect(uploadedBackground.repeat).toBe('no-repeat');
+
+  await page.getByTestId('theme-mode-dark').click();
+  expect(await map.evaluate((element) => element.style.backgroundImage))
+    .toBe(uploadedBackground.image);
+  await page.getByTestId('theme-mode-light').click();
+  expect(await map.evaluate((element) => element.style.backgroundImage))
+    .toBe(uploadedBackground.image);
+
+  await clear.click();
+  await expect(clear).toBeDisabled();
+  await expect(page.getByTestId('background-image-name')).toBeHidden();
+  expect(await map.evaluate((element) => element.style.backgroundImage))
+    .toBe(configuredLightBackground);
+
+  await input.setInputFiles('data/message.html');
+  await expect(page.getByTestId('background-image-error'))
+    .toHaveText('仅支持 PNG、JPEG 和 WebP 图片');
+  expect(await map.evaluate((element) => element.style.backgroundImage))
+    .toBe(configuredLightBackground);
+});
+
 test('shows region names for the current map level and toggles them from settings', async ({ page }) => {
   await page.goto('/');
 
