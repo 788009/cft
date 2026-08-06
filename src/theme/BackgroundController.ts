@@ -13,6 +13,10 @@ export function isSupportedBackgroundImage(file: File): boolean {
   return /\.(?:jpe?g|png|webp)$/i.test(file.name);
 }
 
+export interface BackgroundSnapshot {
+  imageUrl: string | null;
+}
+
 export class BackgroundController {
   private readonly target: HTMLElement;
   private readonly configuredImages: Record<ResolvedTheme, string | null>;
@@ -39,6 +43,15 @@ export class BackgroundController {
     this.apply();
   }
 
+  public getSnapshot(): BackgroundSnapshot {
+    const configuredPath = this.configuredImages[this.currentTheme];
+    return {
+      imageUrl: this.uploadedImageUrl ?? (
+        configuredPath ? getDataAssetUrl(configuredPath) : null
+      ),
+    };
+  }
+
   public destroy(): void {
     if (this.uploadedImageUrl) URL.revokeObjectURL(this.uploadedImageUrl);
     this.uploadedImageUrl = null;
@@ -49,10 +62,7 @@ export class BackgroundController {
   }
 
   private apply(): void {
-    const configuredPath = this.configuredImages[this.currentTheme];
-    const imageUrl = this.uploadedImageUrl ?? (
-      configuredPath ? getDataAssetUrl(configuredPath) : null
-    );
+    const { imageUrl } = this.getSnapshot();
     this.target.style.backgroundImage = imageUrl ? `url("${imageUrl}")` : '';
     this.target.style.backgroundSize = imageUrl ? 'cover' : '';
     this.target.style.backgroundPosition = imageUrl ? 'center center' : '';

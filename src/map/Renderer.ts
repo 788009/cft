@@ -10,7 +10,10 @@ import {
 } from '@/config';
 import type { ProcessedData, Student } from '@/types';
 import type { MapViewState } from '@/state/ViewState';
-import { SchoolOverlay } from './SchoolOverlay';
+import {
+  SchoolOverlay,
+  type NormalizedCardPosition,
+} from './SchoolOverlay';
 import { getInfoRectangle, type InfoRectanglePlacement } from './InfoRectangle';
 import { calculateInitialMapTransform } from './InitialView';
 import { rewindFeature } from './geo';
@@ -46,6 +49,14 @@ export interface MapRendererOptions {
   enableLocalLayoutOptimization?: boolean;
   infoRectanglePlacement?: InfoRectanglePlacement;
   onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
+}
+
+export interface MapRendererSnapshot {
+  sourceWidth: number;
+  sourceHeight: number;
+  view: MapViewState;
+  infoRectanglePlacement: InfoRectanglePlacement;
+  cardPositions: ReadonlyMap<string, NormalizedCardPosition>;
 }
 
 export class MapRenderer {
@@ -99,9 +110,11 @@ export class MapRenderer {
     districtLabels: d3.Selection<SVGGElement, unknown, null, undefined>;
   };
   
-  constructor(containerId: string, options: MapRendererOptions = {}) {
-    const el = document.getElementById(containerId);
-    if (!el) throw new Error(`找不到容器: ${containerId}`);
+  constructor(containerTarget: string | HTMLElement, options: MapRendererOptions = {}) {
+    const el = typeof containerTarget === 'string'
+      ? document.getElementById(containerTarget)
+      : containerTarget;
+    if (!el) throw new Error(`找不到容器: ${containerTarget}`);
     this.container = el;
     this.onViewChange = options.onViewChange;
     this.onRegionSelect = options.onRegionSelect;
@@ -251,6 +264,51 @@ export class MapRenderer {
 
   public rearrangeCards(): void {
     this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
+  }
+
+  public getSnapshot(): MapRendererSnapshot {
+    return {
+      sourceWidth: this.width,
+      sourceHeight: this.height,
+      view: {
+        x: this.currentTransform.x,
+        y: this.currentTransform.y,
+        k: this.currentTransform.k,
+        level: this.requestedLevel,
+      },
+      infoRectanglePlacement: this.schoolOverlay.getInfoRectanglePlacement(),
+      cardPositions: this.schoolOverlay.getNormalizedCardPositions(),
+    };
+  }
+
+  public getSvgElement(): SVGSVGElement {
+    const svg = this.svg.node();
+    if (!svg) throw new Error('地图 SVG 不可用');
+    return svg;
+  }
+
+  public async applySnapshot(snapshot: MapRendererSnapshot): Promise<void> {
+    if (this.destroyed) throw new Error('地图渲染器已销毁');
+    if (snapshot.sourceWidth <= 0 || snapshot.sourceHeight <= 0) {
+      throw new RangeError('地图快照尺寸无效');
+    }
+    this.initialViewApplied = true;
+    this.currentTransform = d3.zoomIdentity
+      .translate(
+        snapshot.view.x * this.width / snapshot.sourceWidth,
+        snapshot.view.y * this.height / snapshot.sourceHeight,
+      )
+      .scale(snapshot.view.k);
+    this.g.attr('transform', this.currentTransform.toString());
+    this.schoolOverlay.setInfoRectanglePlacement(snapshot.infoRectanglePlacement);
+    this.requestedLevel = snapshot.view.level;
+    const version = ++this.transitionVersion;
+    await this.updateLayerVisibility(snapshot.view.level, version);
+    if (this.destroyed || version !== this.transitionVersion) return;
+    this.schoolOverlay.setNormalizedCardPositions(snapshot.cardPositions);
+    this.updateRegionLabelGeometry();
+    this.updateRegionLabelScale();
     this.updateSchoolOverlay();
   }
 
@@ -452,6 +510,7 @@ export class MapRenderer {
 
     } catch (error) {
       console.error('基础地图渲染失败:', error);
+      throw error;
     }
   }
 

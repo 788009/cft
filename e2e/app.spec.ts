@@ -470,10 +470,19 @@ test('enters save image mode with a shared settings menu and restores the main c
   await expect(mode).toBeVisible();
   await expect(page.getByTestId('settings-button')).toBeHidden();
   await expect(page.getByTestId('search-control')).toBeHidden();
-  await expect(page.getByTestId('save-image-button')).toBeDisabled();
+  await expect(page.getByTestId('save-image-button')).toBeEnabled();
+  await expect(page.getByTestId('save-image-status')).toBeHidden();
   await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
   await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
   await expect(menu.getByTestId('settings-message')).toHaveCount(0);
+  await page.getByTestId('save-image-width').fill('8192');
+  await page.getByTestId('save-image-width').blur();
+  await expect(page.getByTestId('save-image-button')).toBeDisabled();
+  await expect(page.getByTestId('save-image-status')).toContainText('总像素数');
+  await page.getByTestId('save-image-width').fill('2880');
+  await page.getByTestId('save-image-width').blur();
+  await expect(page.getByTestId('save-image-button')).toBeEnabled();
+  await expect(page.getByTestId('save-image-status')).toBeHidden();
   await expect.poll(async () => Number(await title.getAttribute('font-size')))
     .toBe(initialTitleSize);
   await expect.poll(async () => Number(await student.getAttribute('font-size')))

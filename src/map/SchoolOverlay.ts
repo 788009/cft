@@ -47,7 +47,7 @@ const MIDDLE_SCHOOL_CARD_ID = '\u0000middle-school-card';
 const TEACHER_PANEL_ID = '\u0000teacher-panel';
 const FOREIGN_PANEL_ID = '\u0000foreign-panel';
 
-interface NormalizedCardPosition {
+export interface NormalizedCardPosition {
   xRatio: number;
   yRatio: number;
 }
@@ -671,6 +671,31 @@ export class SchoolOverlay {
     ]) {
       layer.selectAll('*').interrupt().remove();
     }
+  }
+
+  public getNormalizedCardPositions(): ReadonlyMap<string, NormalizedCardPosition> {
+    const positions = new Map<string, NormalizedCardPosition>();
+    if (this.width <= 0 || this.height <= 0) return positions;
+    for (const [id, rect] of this.positionHistory) {
+      positions.set(id, {
+        xRatio: rect.x / this.width,
+        yRatio: rect.y / this.height,
+      });
+    }
+    return positions;
+  }
+
+  public setNormalizedCardPositions(
+    positions: ReadonlyMap<string, NormalizedCardPosition>,
+  ): void {
+    this.endCardDrag?.();
+    this.positionHistory.clear();
+    this.manualCardPositions.clear();
+    for (const [id, position] of positions) {
+      if (!Number.isFinite(position.xRatio) || !Number.isFinite(position.yRatio)) continue;
+      this.manualCardPositions.set(id, { ...position });
+    }
+    this.root.attr('data-manual-card-count', this.manualCardPositions.size);
   }
 
   public update(

@@ -3,19 +3,25 @@ import {
   calculateAreaFontScale,
   calculateInitialSaveImageLayout,
   createSaveImageModeLayout,
+  linkImageDimensions,
   resizeSaveImageMapRect,
   type ImageDimensions,
   type SaveImageMapResizeHandle,
   type SaveImageModeLayout,
 } from './geometry';
-import { SaveImageState } from './SaveImageState';
+import {
+  SaveImageState,
+  type SaveImageStateSnapshot,
+} from './SaveImageState';
 import type { SettingsController } from '@/settings/SettingsController';
+import { validateExportDimensions } from './validation';
 
 export interface SaveImageControllerOptions {
   onExit: () => void;
   onLayoutChange: (layout: SaveImageModeLayout) => void;
   onFontScaleChange: (scale: number) => void;
   onRearrangeCards: () => void;
+  onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
 }
 
 export class SaveImageController {
@@ -24,6 +30,7 @@ export class SaveImageController {
   private readonly onLayoutChange: (layout: SaveImageModeLayout) => void;
   private readonly onFontScaleChange: (scale: number) => void;
   private readonly onRearrangeCards: () => void;
+  private readonly onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
   private readonly resizeHandles: Map<SaveImageMapResizeHandle, HTMLDivElement>;
@@ -33,6 +40,8 @@ export class SaveImageController {
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
   private fontScaleInput!: HTMLInputElement;
+  private saveButton!: HTMLButtonElement;
+  private saveStatus!: HTMLParagraphElement;
 
   constructor(
     container: HTMLElement,
@@ -44,6 +53,7 @@ export class SaveImageController {
     this.onLayoutChange = options.onLayoutChange;
     this.onFontScaleChange = options.onFontScaleChange;
     this.onRearrangeCards = options.onRearrangeCards;
+    this.onSave = options.onSave;
     this.layout = this.calculateLayout();
 
     this.root = document.createElement('div');
@@ -134,28 +144,58 @@ export class SaveImageController {
     this.fontScaleInput.min = '0.1';
     fontLabel.append(this.fontScaleInput);
 
-    const save = document.createElement('button');
-    save.type = 'button';
-    save.disabled = true;
-    save.dataset.testid = 'save-image-button';
-    save.className = 'min-h-11 w-full rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-slate-950';
-    save.textContent = '保存图片';
+    this.saveButton = document.createElement('button');
+    this.saveButton.type = 'button';
+    this.saveButton.dataset.testid = 'save-image-button';
+    this.saveButton.className = 'min-h-11 w-full rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-slate-950';
+    this.saveButton.textContent = '保存图片';
+    this.saveStatus = document.createElement('p');
+    this.saveStatus.dataset.testid = 'save-image-status';
+    this.saveStatus.className = 'hidden text-sm text-red-700 dark:text-red-300';
+    this.saveStatus.setAttribute('role', 'alert');
+    this.saveButton.addEventListener('click', async () => {
+      if (this.saveButton.disabled) return;
+      this.saveButton.disabled = true;
+      this.saveButton.textContent = '正在生成';
+      this.widthInput.disabled = true;
+      this.heightInput.disabled = true;
+      this.fontScaleInput.disabled = true;
+      this.setSaveError(null);
+      try {
+        await this.onSave(this.state.getSnapshot());
+      } catch (error) {
+        this.setSaveError(error instanceof Error ? error.message : '图片生成失败');
+      } finally {
+        this.saveButton.disabled = false;
+        this.saveButton.textContent = '保存图片';
+        this.widthInput.disabled = false;
+        this.heightInput.disabled = false;
+        this.fontScaleInput.disabled = false;
+      }
+    });
     const rearrange = document.createElement('button');
     rearrange.type = 'button';
     rearrange.dataset.testid = 'save-image-rearrange-cards';
     rearrange.className = 'min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus-visible:outline-teal-400';
     rearrange.textContent = '重排';
     rearrange.addEventListener('click', this.onRearrangeCards);
-    section.append(heading, fields, fontLabel, rearrange, save);
+    section.append(
+      heading,
+      fields,
+      fontLabel,
+      rearrange,
+      this.saveButton,
+      this.saveStatus,
+    );
 
     this.widthInput.addEventListener('change', () => {
       const value = Number(this.widthInput.value);
-      if (Number.isFinite(value) && value > 0) this.state.setWidth(value);
+      if (!this.applyDimensionChange('width', value)) return;
       this.syncDimensionInputs();
     });
     this.heightInput.addEventListener('change', () => {
       const value = Number(this.heightInput.value);
-      if (Number.isFinite(value) && value > 0) this.state.setHeight(value);
+      if (!this.applyDimensionChange('height', value)) return;
       this.syncDimensionInputs();
     });
     this.fontScaleInput.addEventListener('change', () => {
@@ -331,6 +371,28 @@ export class SaveImageController {
       defaultConfig.export.fontScaleAreaRootRatio,
       snapshot.fontScaleMultiplier,
     );
+  }
+
+  private applyDimensionChange(changed: 'width' | 'height', value: number): boolean {
+    try {
+      const current = this.state.getSnapshot();
+      const candidate = linkImageDimensions(changed, value, current.aspectRatio);
+      validateExportDimensions(candidate.width, candidate.height);
+      if (changed === 'width') this.state.setWidth(value);
+      else this.state.setHeight(value);
+      this.setSaveError(null);
+      this.saveButton.disabled = false;
+      return true;
+    } catch (error) {
+      this.setSaveError(error instanceof Error ? error.message : '图片尺寸无效');
+      this.saveButton.disabled = true;
+      return false;
+    }
+  }
+
+  private setSaveError(message: string | null): void {
+    this.saveStatus.textContent = message ?? '';
+    this.saveStatus.classList.toggle('hidden', !message);
   }
 
   private syncDimensionInputs(): void {

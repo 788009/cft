@@ -24,6 +24,8 @@ import type { Rect } from '@/logic/layout';
 import { SettingsStateStore } from '@/settings/SettingsState';
 import { SaveImageController } from '@/export/SaveImageController';
 import type { SaveImageModeLayout } from '@/export/geometry';
+import type { SaveImageStateSnapshot } from '@/export/SaveImageState';
+import { exportMapToPng } from '@/export/PngExporter';
 
 export class AppController {
   private readonly mapContainer: HTMLElement;
@@ -278,6 +280,7 @@ export class AppController {
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
       onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
       onRearrangeCards: () => this.renderer?.rearrangeCards(),
+      onSave: (snapshot) => this.saveMapImage(snapshot),
     });
     this.renderer?.resetToInitialView();
   }
@@ -311,6 +314,37 @@ export class AppController {
   private applySaveImageFontScale(scale: number): void {
     this.saveImageFontScale = scale;
     this.renderer?.setSaveImageFontScale(scale);
+  }
+
+  private async saveMapImage(snapshot: SaveImageStateSnapshot): Promise<void> {
+    const renderer = this.renderer;
+    if (!renderer) throw new Error('地图尚未加载完成');
+    const data = await this.getData();
+    const background = this.background.getSnapshot();
+    const mapBackground = getComputedStyle(this.mapContainer).backgroundColor;
+    const bodyBackground = getComputedStyle(document.body).backgroundColor;
+    await exportMapToPng({
+      width: snapshot.width,
+      height: snapshot.height,
+      fontScale: snapshot.fontScale,
+      data,
+      mapSnapshot: renderer.getSnapshot(),
+      settings: {
+        cardGroupingMode: this.cardGroupingMode,
+        showRegionNames: this.showRegionNames,
+        onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
+        showInfoRectangle: this.showInfoRectangle,
+        showMiddleSchool: this.showMiddleSchool,
+        enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
+        infoRectanglePlacement: this.infoRectanglePlacement,
+      },
+      background: {
+        color: mapBackground !== 'rgba(0, 0, 0, 0)' ? mapBackground : bodyBackground,
+        imageUrl: background.imageUrl,
+        fit: defaultConfig.export.defaultFit,
+      },
+      filename: `${defaultConfig.pageTitle}.png`,
+    });
   }
 
   private restoreMapViewport(): void {
