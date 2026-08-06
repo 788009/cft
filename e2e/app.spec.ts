@@ -685,10 +685,12 @@ test('keeps map navigation but disables region selection in save image mode', as
   await page.goto('/');
   const map = page.getByTestId('map-container');
   const mapGeometry = map.locator('g.map-geometry');
+  const mapSvg = map.locator('svg');
   const region = map.locator('.layer-provinces-fill path.region-actionable').first();
   await expect(region).toHaveAttribute('role', 'button');
   const fill = await region.getAttribute('fill');
   if (!fill) throw new Error('行政区缺少填充颜色');
+  const initialTransform = await mapGeometry.getAttribute('transform');
 
   await page.getByTestId('settings-button').click();
   await page.getByTestId('open-save-image-mode').click();
@@ -698,12 +700,14 @@ test('keeps map navigation but disables region selection in save image mode', as
   await expect(region).toHaveAttribute('fill', fill);
   await region.click({ force: true });
   await expect(page.getByTestId('region-detail-dialog')).toHaveCount(0);
-  const initialTransform = await mapGeometry.getAttribute('transform');
+  const saveImageInitialTransform = await mapGeometry.getAttribute('transform');
   await zoomMapToScale(page, 3);
-  await expect.poll(() => mapGeometry.getAttribute('transform')).not.toBe(initialTransform);
+  await expect.poll(() => mapGeometry.getAttribute('transform')).not.toBe(saveImageInitialTransform);
 
   await page.getByTestId('exit-save-image-mode').click();
   await expect(region).toHaveAttribute('role', 'button');
+  await expect.poll(() => mapGeometry.getAttribute('transform')).toBe(initialTransform);
+  await expect(mapSvg).toHaveAttribute('data-map-level', 'province');
 });
 
 test('drags save image cards with normalized positions and rearranges them', async ({ page }) => {

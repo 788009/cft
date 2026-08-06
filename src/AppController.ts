@@ -297,8 +297,8 @@ export class AppController {
     this.renderer?.setSaveImageFontScale(1);
     this.renderer?.setSaveImageVisualScale(1);
     this.renderer?.setRegionSelectionEnabled(true);
-    this.renderer?.rearrangeCards();
     this.restoreMapViewport();
+    this.renderer?.resetToInitialView();
     this.settings.setButtonVisible(true);
     this.search.setVisible(true);
   }
