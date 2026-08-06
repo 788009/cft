@@ -113,6 +113,9 @@ export interface AppConfig {
   export: {
     defaultWidth: number;
     defaultHeight: number;
+    initialMapAspectRatio: number;
+    menuReservedRatio: number;
+    defaultFontScaleMultiplier: number;
     minDimension: number;
     maxDimension: number;
     maxTotalPixels: number;
@@ -232,8 +235,11 @@ export const defaultConfig: AppConfig = {
   },
   regionLabelFontSize: 11,
   export: {
-    defaultWidth: 3840,
-    defaultHeight: 2160,
+    defaultWidth: 2880,
+    defaultHeight: 1800,
+    initialMapAspectRatio: 1.6,
+    menuReservedRatio: 1 / 3,
+    defaultFontScaleMultiplier: 1,
     minDimension: 512,
     maxDimension: 8192,
     maxTotalPixels: 32000000,
