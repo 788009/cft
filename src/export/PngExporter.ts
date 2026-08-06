@@ -1,10 +1,16 @@
-import { defaultConfig, type CardGroupingMode } from '@/config';
+import { defaultConfig } from '@/config';
 import type { ProcessedData } from '@/types';
 import {
   MapRenderer,
   type MapRendererSnapshot,
 } from '@/map/Renderer';
 import type { InfoRectanglePlacement } from '@/map/InfoRectangle';
+import {
+  RegionDetailRenderer,
+  type RegionDetailRendererSnapshot,
+} from '@/map/RegionDetailRenderer';
+import type { RegionSelection } from '@/details/types';
+import type { SaveImageSceneSettings } from './SaveImageScene';
 import { validateExportDimensions } from './validation';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
@@ -37,23 +43,16 @@ export interface PngExportBackground {
   fit: 'cover' | 'contain';
 }
 
-export interface PngExportSettings {
-  cardGroupingMode: CardGroupingMode;
-  showRegionNames: boolean;
-  onlyShowRegionNamesWithSchools: boolean;
-  showInfoRectangle: boolean;
-  showMiddleSchool: boolean;
-  enableLocalLayoutOptimization: boolean;
+export interface PngExportSettings extends SaveImageSceneSettings {
   infoRectanglePlacement: InfoRectanglePlacement;
 }
 
-export interface PngExportRequest {
+interface BasePngExportRequest {
   width: number;
   height: number;
   fontScale: number;
   visualScale: number;
   data: ProcessedData;
-  mapSnapshot: MapRendererSnapshot;
   settings: PngExportSettings;
   background: PngExportBackground;
   filename: string;
@@ -61,7 +60,90 @@ export interface PngExportRequest {
   signal?: AbortSignal;
 }
 
+export interface PngExportRequest extends BasePngExportRequest {
+  mapSnapshot: MapRendererSnapshot;
+}
+
+export interface RegionPngExportRequest extends BasePngExportRequest {
+  selection: RegionSelection;
+  regionSnapshot: RegionDetailRendererSnapshot;
+}
+
+interface PngSceneRenderer {
+  getSvgElement: () => SVGSVGElement;
+  destroy: () => void;
+}
+
 export async function exportMapToPng(request: PngExportRequest): Promise<void> {
+  return exportSceneToPng(request, async (host, reportProgress) => {
+    const renderer = new MapRenderer(host, {
+      cardGroupingMode: request.settings.cardGroupingMode,
+      showRegionNames: request.settings.showRegionNames,
+      onlyShowRegionNamesWithSchools: request.settings.onlyShowRegionNamesWithSchools,
+      showInfoRectangle: request.settings.showInfoRectangle,
+      showMiddleSchool: request.settings.showMiddleSchool,
+      enableLocalLayoutOptimization: request.settings.enableLocalLayoutOptimization,
+      infoRectanglePlacement: request.settings.infoRectanglePlacement,
+      cardDraggingEnabled: false,
+    });
+    try {
+      renderer.setRegionSelectionEnabled(false);
+      renderer.setSaveImageFontScale(request.fontScale);
+      renderer.setSaveImageVisualScale(request.visualScale);
+      renderer.setData(request.data);
+      await renderer.renderBaseMap();
+      reportProgress(0.4);
+      await renderer.applySnapshot(request.mapSnapshot);
+      await waitForRenderSettlement(request.signal);
+      reportProgress(0.6);
+      return renderer;
+    } catch (error) {
+      renderer.destroy();
+      throw error;
+    }
+  });
+}
+
+export async function exportRegionToPng(
+  request: RegionPngExportRequest,
+): Promise<void> {
+  return exportSceneToPng(request, async (host, reportProgress) => {
+    const renderer = new RegionDetailRenderer(
+      host,
+      undefined,
+      request.settings.showRegionNames,
+      request.settings.onlyShowRegionNamesWithSchools,
+      request.settings.showInfoRectangle,
+      request.settings.infoRectanglePlacement,
+      request.settings.enableLocalLayoutOptimization,
+      request.settings.cardGroupingMode,
+      false,
+      false,
+      request.settings.interactionMode,
+    );
+    try {
+      renderer.setFontScale(request.fontScale);
+      renderer.setVisualScale(request.visualScale);
+      await renderer.render(request.selection, request.data);
+      reportProgress(0.4);
+      renderer.applySnapshot(request.regionSnapshot);
+      await waitForRenderSettlement(request.signal);
+      reportProgress(0.6);
+      return renderer;
+    } catch (error) {
+      renderer.destroy();
+      throw error;
+    }
+  });
+}
+
+async function exportSceneToPng(
+  request: BasePngExportRequest,
+  createScene: (
+    host: HTMLElement,
+    reportProgress: (progress: number) => void,
+  ) => Promise<PngSceneRenderer>,
+): Promise<void> {
   const reportProgress = (progress: number): void => {
     request.signal?.throwIfAborted();
     request.onProgress?.(progress);
@@ -73,28 +155,10 @@ export async function exportMapToPng(request: PngExportRequest): Promise<void> {
 
   const host = createRenderHost(request.width, request.height);
   document.body.append(host);
-  let renderer: MapRenderer | null = null;
+  let renderer: PngSceneRenderer | null = null;
 
   try {
-    renderer = new MapRenderer(host, {
-      cardGroupingMode: request.settings.cardGroupingMode,
-      showRegionNames: request.settings.showRegionNames,
-      onlyShowRegionNamesWithSchools: request.settings.onlyShowRegionNamesWithSchools,
-      showInfoRectangle: request.settings.showInfoRectangle,
-      showMiddleSchool: request.settings.showMiddleSchool,
-      enableLocalLayoutOptimization: request.settings.enableLocalLayoutOptimization,
-      infoRectanglePlacement: request.settings.infoRectanglePlacement,
-      cardDraggingEnabled: false,
-    });
-    renderer.setRegionSelectionEnabled(false);
-    renderer.setSaveImageFontScale(request.fontScale);
-    renderer.setSaveImageVisualScale(request.visualScale);
-    renderer.setData(request.data);
-    await renderer.renderBaseMap();
-    reportProgress(0.4);
-    await renderer.applySnapshot(request.mapSnapshot);
-    await waitForRenderSettlement(request.signal);
-    reportProgress(0.6);
+    renderer = await createScene(host, reportProgress);
 
     const svg = renderer.getSvgElement();
     svg.setAttribute('width', String(request.width));

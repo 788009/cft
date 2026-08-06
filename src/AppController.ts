@@ -26,6 +26,12 @@ import { SaveImageController } from '@/export/SaveImageController';
 import type { SaveImageModeLayout } from '@/export/geometry';
 import type { SaveImageStateSnapshot } from '@/export/SaveImageState';
 import { exportMapToPng } from '@/export/PngExporter';
+import type {
+  SaveImageScene,
+  SaveImageSceneSettings,
+} from '@/export/SaveImageScene';
+import type { RegionSelection } from '@/details/types';
+import { RegionSaveImageScene } from '@/export/RegionSaveImageScene';
 
 export class AppController {
   private readonly mapContainer: HTMLElement;
@@ -59,6 +65,8 @@ export class AppController {
   private renderVersion = 0;
   private started = false;
   private saveImage: SaveImageController | null = null;
+  private saveImageScene: SaveImageScene | null = null;
+  private saveImageStarting = false;
   private saveImageFontScale = 1;
   private saveImageVisualScale = 1;
 
@@ -90,6 +98,7 @@ export class AppController {
       this.infoRectanglePlacement,
       this.enableLocalLayoutOptimization,
       this.cardGroupingMode,
+      (selection, data) => void this.beginRegionSaveImageMode(selection, data),
     );
     this.background = new BackgroundController(
       this.mapContainer,
@@ -118,37 +127,50 @@ export class AppController {
         onInteractionModeChange: (mode) => {
           this.interactionMode = mode;
           this.renderer?.setInteractionMode(mode);
+          this.syncSaveImageSceneSettings();
         },
-        onThemeModeChange: (mode) => this.theme.setMode(mode),
-        onBackgroundImageChange: (file) => this.background.setUploadedFile(file),
+        onThemeModeChange: (mode) => {
+          this.theme.setMode(mode);
+          this.syncSaveImageSceneAppearance();
+        },
+        onBackgroundImageChange: (file) => {
+          this.background.setUploadedFile(file);
+          this.syncSaveImageSceneAppearance();
+        },
         onCardGroupingModeChange: (mode) => {
           this.cardGroupingMode = mode;
           this.renderer?.setCardGroupingMode(mode);
           this.details.setCardGroupingMode(mode);
+          this.syncSaveImageSceneSettings();
         },
         onShowRegionNamesChange: (show) => {
           this.showRegionNames = show;
           this.renderer?.setShowRegionNames(show);
           this.details.setShowRegionNames(show);
+          this.syncSaveImageSceneSettings();
         },
         onOnlyShowRegionNamesWithSchoolsChange: (only) => {
           this.onlyShowRegionNamesWithSchools = only;
           this.renderer?.setOnlyShowRegionNamesWithSchools(only);
           this.details.setOnlyShowRegionNamesWithSchools(only);
+          this.syncSaveImageSceneSettings();
         },
         onShowInfoRectangleChange: (show) => {
           this.showInfoRectangle = show;
           this.renderer?.setShowInfoRectangle(show);
           this.details.setShowInfoRectangle(show);
+          this.syncSaveImageSceneSettings();
         },
         onShowMiddleSchoolChange: (show) => {
           this.showMiddleSchool = show;
           this.renderer?.setShowMiddleSchool(show);
+          this.syncSaveImageSceneSettings();
         },
         onLocalLayoutOptimizationChange: (enabled) => {
           this.enableLocalLayoutOptimization = enabled;
           this.renderer?.setLocalLayoutOptimizationEnabled(enabled);
           this.details.setLocalLayoutOptimizationEnabled(enabled);
+          this.syncSaveImageSceneSettings();
         },
         onEditInfoRectangle: () => this.beginInfoRectangleEditing(),
         onSaveImage: () => this.beginSaveImageMode(),
@@ -172,6 +194,9 @@ export class AppController {
     this.renderer = null;
     this.saveImage?.destroy();
     this.saveImage = null;
+    this.saveImageScene?.exit();
+    this.saveImageScene = null;
+    this.mapContainer.classList.remove('hidden');
     this.restoreMapViewport();
     this.details.closeAll();
     this.infoRectangleEditor.close();
@@ -255,13 +280,17 @@ export class AppController {
   }
 
   private beginInfoRectangleEditing(): void {
-    if (!this.renderer || this.infoRectangleEditing) return;
+    if ((!this.renderer && !this.saveImageScene) || this.infoRectangleEditing) return;
     this.infoRectangleEditing = true;
-    this.details.closeAll();
+    if (!this.saveImageScene) this.details.closeAll();
     this.settings.setButtonVisible(false);
     this.search.setVisible(false);
     this.saveImage?.setVisible(false);
-    this.renderer.setInfoRectangleEditing(true);
+    if (this.saveImageScene) {
+      this.saveImageScene.setInfoRectangleEditing(true);
+    } else {
+      this.renderer?.setInfoRectangleEditing(true);
+    }
     this.infoRectangleEditor.open({
       onConfirm: () => this.finishInfoRectangleEditing(),
       onReset: () => this.resetInfoRectanglePlacement(),
@@ -269,38 +298,110 @@ export class AppController {
   }
 
   private beginSaveImageMode(): void {
-    if (this.saveImage) return;
+    if (this.saveImage || !this.renderer) return;
     this.details.closeAll();
     this.finishInfoRectangleEditing();
+    const scene: SaveImageScene = {
+      applyLayout: (layout) => this.applySaveImageLayout(layout),
+      setFontScale: (scale) => this.applySaveImageFontScale(scale),
+      setVisualScale: (scale) => this.applySaveImageVisualScale(scale),
+      setInfoRectangleEditing: (editing) => {
+        this.renderer?.setInfoRectangleEditing(editing);
+      },
+      resetInfoRectangle: () => this.resetMainSaveImageInfoRectangle(),
+      rearrangeCards: () => this.renderer?.rearrangeCards(),
+      syncSettings: () => {},
+      syncAppearance: () => {},
+      resetView: () => this.renderer?.resetToInitialView(),
+      save: (snapshot, onProgress, signal) => (
+        this.saveMapImage(snapshot, onProgress, signal)
+      ),
+      exit: () => {
+        this.saveImageFontScale = 1;
+        this.saveImageVisualScale = 1;
+        this.renderer?.setSaveImageFontScale(1);
+        this.renderer?.setSaveImageVisualScale(1);
+        this.restoreMapViewport();
+        this.renderer?.resetToInitialView();
+      },
+    };
+    this.openSaveImageScene(scene);
+  }
+
+  private finishSaveImageMode(): void {
+    if (!this.saveImage) return;
+    const scene = this.saveImageScene;
+    this.saveImage.destroy();
+    this.saveImage = null;
+    this.finishInfoRectangleEditing();
+    this.saveImageScene = null;
+    scene?.exit();
+    this.mapContainer.classList.remove('hidden');
+    this.details.setRegionVisible(true);
+    this.renderer?.setRegionSelectionEnabled(true);
+    this.settings.setButtonVisible(true);
+    this.search.setVisible(true);
+  }
+
+  private openSaveImageScene(scene: SaveImageScene): void {
+    this.saveImageScene = scene;
     this.settings.setButtonVisible(false);
     this.search.setVisible(false);
     this.renderer?.setRegionSelectionEnabled(false);
     this.saveImage = new SaveImageController(this.uiContainer, this.settings, {
       onExit: () => this.finishSaveImageMode(),
-      onLayoutChange: (layout) => this.applySaveImageLayout(layout),
-      onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
-      onVisualScaleChange: (scale) => this.applySaveImageVisualScale(scale),
-      onRearrangeCards: () => this.renderer?.rearrangeCards(),
+      onLayoutChange: (layout) => scene.applyLayout(layout),
+      onFontScaleChange: (scale) => scene.setFontScale(scale),
+      onVisualScaleChange: (scale) => scene.setVisualScale(scale),
+      onRearrangeCards: () => scene.rearrangeCards(),
       onSave: (snapshot, onProgress, signal) => (
-        this.saveMapImage(snapshot, onProgress, signal)
+        scene.save(snapshot, onProgress, signal)
       ),
     });
-    this.renderer?.resetToInitialView();
+    scene.resetView();
   }
 
-  private finishSaveImageMode(): void {
-    if (!this.saveImage) return;
-    this.saveImage.destroy();
-    this.saveImage = null;
-    this.saveImageFontScale = 1;
-    this.saveImageVisualScale = 1;
-    this.renderer?.setSaveImageFontScale(1);
-    this.renderer?.setSaveImageVisualScale(1);
-    this.renderer?.setRegionSelectionEnabled(true);
-    this.restoreMapViewport();
-    this.renderer?.resetToInitialView();
-    this.settings.setButtonVisible(true);
-    this.search.setVisible(true);
+  private async beginRegionSaveImageMode(
+    selection: RegionSelection,
+    data: ProcessedData,
+  ): Promise<void> {
+    if (this.saveImage || this.saveImageStarting) return;
+    this.saveImageStarting = true;
+    this.details.setRegionVisible(false);
+    this.mapContainer.classList.add('hidden');
+    this.settings.setButtonVisible(false);
+    this.search.setVisible(false);
+    this.renderer?.setRegionSelectionEnabled(false);
+
+    try {
+      const scene = await RegionSaveImageScene.create({
+        container: this.uiContainer,
+        selection,
+        data,
+        settings: this.getSaveImageSceneSettings(),
+        infoRectanglePlacement: this.infoRectanglePlacement,
+        getBackground: () => this.getPngExportBackground(),
+      });
+      if (!this.started || this.saveImage) {
+        scene.exit();
+        this.mapContainer.classList.remove('hidden');
+        this.details.setRegionVisible(true);
+        this.settings.setButtonVisible(true);
+        this.search.setVisible(true);
+        this.renderer?.setRegionSelectionEnabled(true);
+        return;
+      }
+      this.openSaveImageScene(scene);
+    } catch (error) {
+      this.mapContainer.classList.remove('hidden');
+      this.details.setRegionVisible(true);
+      this.settings.setButtonVisible(true);
+      this.search.setVisible(true);
+      this.renderer?.setRegionSelectionEnabled(true);
+      console.error('地区保存图片模式加载失败:', error);
+    } finally {
+      this.saveImageStarting = false;
+    }
   }
 
   private applySaveImageLayout(layout: SaveImageModeLayout): void {
@@ -346,6 +447,7 @@ export class AppController {
       mapSnapshot: renderer.getSnapshot(),
       settings: {
         cardGroupingMode: this.cardGroupingMode,
+        interactionMode: this.interactionMode,
         showRegionNames: this.showRegionNames,
         onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
         showInfoRectangle: this.showInfoRectangle,
@@ -362,6 +464,39 @@ export class AppController {
       onProgress,
       signal,
     });
+  }
+
+  private getSaveImageSceneSettings(): SaveImageSceneSettings {
+    return {
+      cardGroupingMode: this.cardGroupingMode,
+      interactionMode: this.interactionMode,
+      showRegionNames: this.showRegionNames,
+      onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
+      showInfoRectangle: this.showInfoRectangle,
+      showMiddleSchool: this.showMiddleSchool,
+      enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
+    };
+  }
+
+  private syncSaveImageSceneSettings(): void {
+    this.saveImageScene?.syncSettings(this.getSaveImageSceneSettings());
+  }
+
+  private syncSaveImageSceneAppearance(): void {
+    this.saveImageScene?.syncAppearance();
+  }
+
+  private getPngExportBackground() {
+    const background = this.background.getSnapshot();
+    const mapBackground = getComputedStyle(this.mapContainer).backgroundColor;
+    const bodyBackground = getComputedStyle(document.body).backgroundColor;
+    return {
+      color: mapBackground !== 'rgba(0, 0, 0, 0)'
+        ? mapBackground
+        : bodyBackground,
+      imageUrl: background.imageUrl,
+      fit: defaultConfig.export.defaultFit,
+    } as const;
   }
 
   private restoreMapViewport(): void {
@@ -388,7 +523,11 @@ export class AppController {
   private finishInfoRectangleEditing(): void {
     if (!this.infoRectangleEditing) return;
     this.infoRectangleEditing = false;
-    this.renderer?.setInfoRectangleEditing(false);
+    if (this.saveImageScene) {
+      this.saveImageScene.setInfoRectangleEditing(false);
+    } else {
+      this.renderer?.setInfoRectangleEditing(false);
+    }
     this.infoRectangleEditor.close();
     if (this.saveImage) {
       this.saveImage.setVisible(true);
@@ -399,10 +538,24 @@ export class AppController {
   }
 
   private resetInfoRectanglePlacement(): void {
+    if (this.saveImageScene) {
+      this.saveImageScene.resetInfoRectangle();
+      return;
+    }
     const mainViewport = this.viewState.getSnapshot().viewport;
+    const width = mainViewport.width;
+    const height = mainViewport.height;
+    const placement = getDefaultInfoRectanglePlacement(width, height);
+    this.infoRectanglePlacement = placement;
+    this.renderer?.setInfoRectanglePlacement(placement);
+    this.details.setInfoRectanglePlacement(placement);
+  }
+
+  private resetMainSaveImageInfoRectangle(): void {
+    const viewport = this.viewState.getSnapshot().viewport;
     const mapRect = this.saveImage?.getLayout().mapRect;
-    const width = mapRect?.width ?? mainViewport.width;
-    const height = mapRect?.height ?? mainViewport.height;
+    const width = mapRect?.width ?? viewport.width;
+    const height = mapRect?.height ?? viewport.height;
     const placement = getDefaultInfoRectanglePlacement(width, height);
     this.infoRectanglePlacement = placement;
     this.renderer?.setInfoRectanglePlacement(placement);

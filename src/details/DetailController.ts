@@ -18,6 +18,10 @@ export class DetailController {
   private infoRectanglePlacement: InfoRectanglePlacement;
   private enableLocalLayoutOptimization: boolean;
   private cardGroupingMode: CardGroupingMode;
+  private readonly onSaveRegionImage: (
+    selection: RegionSelection,
+    data: ProcessedData,
+  ) => void;
 
   constructor(
     container: HTMLElement,
@@ -27,6 +31,7 @@ export class DetailController {
     infoRectanglePlacement: InfoRectanglePlacement,
     enableLocalLayoutOptimization: boolean,
     cardGroupingMode: CardGroupingMode,
+    onSaveRegionImage: (selection: RegionSelection, data: ProcessedData) => void,
   ) {
     this.container = container;
     this.showRegionNames = showRegionNames;
@@ -35,6 +40,7 @@ export class DetailController {
     this.infoRectanglePlacement = infoRectanglePlacement;
     this.enableLocalLayoutOptimization = enableLocalLayoutOptimization;
     this.cardGroupingMode = cardGroupingMode;
+    this.onSaveRegionImage = onSaveRegionImage;
   }
 
   public setShowRegionNames(show: boolean): void {
@@ -54,7 +60,6 @@ export class DetailController {
 
   public setInfoRectanglePlacement(placement: InfoRectanglePlacement): void {
     this.infoRectanglePlacement = placement;
-    this.regionRenderer?.setInfoRectanglePlacement(placement);
   }
 
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
@@ -75,8 +80,17 @@ export class DetailController {
     downloadButton.type = 'button';
     downloadButton.disabled = true;
     downloadButton.dataset.testid = 'download-region-image';
-    downloadButton.className = 'h-11 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-400 disabled:cursor-not-allowed dark:border-slate-700 dark:text-slate-500';
-    downloadButton.textContent = '下载图片';
+    downloadButton.className = [
+      'h-11 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white',
+      'hover:bg-teal-800 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500',
+      'dark:text-slate-950 dark:hover:bg-teal-400 dark:focus-visible:outline-teal-400',
+    ].join(' ');
+    downloadButton.textContent = '保存图片';
+    downloadButton.addEventListener('click', () => {
+      if (downloadButton.disabled) return;
+      this.onSaveRegionImage(selection, data);
+    });
 
     this.regionShell = new ModalShell(this.container, {
       testId: 'region-detail-dialog',
@@ -95,7 +109,9 @@ export class DetailController {
       this.enableLocalLayoutOptimization,
       this.cardGroupingMode,
     );
-    void this.regionRenderer.render(selection, data).catch((error: unknown) => {
+    void this.regionRenderer.render(selection, data).then(() => {
+      if (version === this.openVersion && this.regionShell) downloadButton.disabled = false;
+    }).catch((error: unknown) => {
       if (version !== this.openVersion || !this.regionShell) return;
       console.error('地区详情加载失败:', error);
       const message = document.createElement('p');
@@ -103,6 +119,14 @@ export class DetailController {
       message.textContent = '地区详情加载失败';
       this.regionShell.body.replaceChildren(message);
     });
+  }
+
+  public setRegionVisible(visible: boolean): void {
+    if (!this.regionShell) return;
+    this.regionShell.root.classList.toggle('hidden', !visible);
+    this.regionShell.root.inert = !visible;
+    if (visible) this.regionShell.root.removeAttribute('aria-hidden');
+    else this.regionShell.root.setAttribute('aria-hidden', 'true');
   }
 
   public openPerson(student: Student): void {

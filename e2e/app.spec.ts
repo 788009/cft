@@ -1850,6 +1850,62 @@ test('opens a static province detail scene with every indexed school', async ({ 
   await expect(dialog).toHaveCount(0);
 });
 
+test('opens the shared save image mode for a region detail', async ({ page }) => {
+  await page.goto('/');
+
+  const mainMap = page.getByTestId('map-container');
+  const provincePath = mainMap.locator('.layer-provinces-fill path.region-actionable').first();
+  await expect(provincePath).toBeVisible();
+  await provincePath.click({ force: true });
+
+  const dialog = page.getByTestId('region-detail-dialog');
+  const detailMap = page.getByTestId('region-detail-map');
+  const selectionAdcode = await detailMap.getAttribute('data-region-adcode');
+  if (!selectionAdcode) throw new Error('地区详情缺少行政区代码');
+  const saveRegionImage = page.getByTestId('download-region-image');
+  await expect(saveRegionImage).toHaveText('保存图片');
+  await expect(saveRegionImage).toBeEnabled();
+  await saveRegionImage.click();
+
+  await expect(dialog).toBeHidden();
+  await expect(mainMap).toBeHidden();
+  await expect(page.getByTestId('save-image-mode')).toBeVisible();
+  const regionPreview = page.getByTestId('region-save-image-map');
+  await expect(regionPreview).toBeVisible();
+  await expect(regionPreview.locator('svg.region-detail-map'))
+    .toHaveAttribute('data-region-adcode', selectionAdcode);
+  await expect(regionPreview.locator('g.school-label')).not.toHaveCount(0);
+  const previewSvg = regionPreview.locator('svg.region-detail-map');
+  const previewGeometry = previewSvg.locator('g.region-detail-geometry');
+  const initialPreviewTransform = await previewGeometry.getAttribute('transform');
+  const previewBox = await previewSvg.boundingBox();
+  if (!previewBox) throw new Error('地区保存图片预览没有可用尺寸');
+  await page.mouse.move(
+    previewBox.x + previewBox.width / 2,
+    previewBox.y + previewBox.height / 2,
+  );
+  await page.mouse.wheel(0, -600);
+  await expect.poll(() => previewGeometry.getAttribute('transform'))
+    .not.toBe(initialPreviewTransform);
+
+  await page.getByTestId('card-grouping-school').click();
+  await expect(regionPreview.locator('g.school-overlay'))
+    .toHaveAttribute('data-card-grouping', 'school');
+
+  await page.getByTestId('save-image-button').click();
+  const exportScene = page.getByTestId('png-export-scene');
+  await expect(exportScene.locator('svg.region-detail-map'))
+    .toHaveAttribute('data-region-adcode', selectionAdcode);
+  await expect(exportScene.locator('g.map-geometry')).toHaveCount(0);
+  await page.getByTestId('cancel-save-image').click();
+  await expect(exportScene).toHaveCount(0);
+
+  await page.getByTestId('exit-save-image-mode').click();
+  await expect(regionPreview).toHaveCount(0);
+  await expect(mainMap).toBeVisible();
+  await expect(dialog).toBeVisible();
+});
+
 test('opens city details at city level and does not drill down from districts', async ({ page }) => {
   await page.goto('/');
 
