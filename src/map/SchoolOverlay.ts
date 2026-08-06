@@ -689,6 +689,9 @@ export class SchoolOverlay {
         yRatio: rect.y / this.height,
       });
     }
+    for (const [id, position] of this.manualCardPositions) {
+      positions.set(id, { ...position });
+    }
     return positions;
   }
 

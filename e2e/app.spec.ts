@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { centerDomesticSchools, zoomMapToScale } from './helpers';
 
 test('switches default range geometry at the wide and narrow screen boundary', async ({ page }) => {
@@ -741,6 +741,61 @@ test('drags save image cards with normalized positions and rearranges them', asy
   }));
   expect(normalized.xRatio).toBeCloseTo(normalized.x / 960, 5);
   expect(normalized.yRatio).toBeCloseTo(normalized.y / 600, 5);
+
+  const dragFixedPanel = async (
+    panel: Locator,
+    backgroundSelector: string,
+    deltaX: number,
+    deltaY: number,
+  ): Promise<{ xRatio: number; yRatio: number }> => {
+    await expect(panel).toBeVisible();
+    const box = await panel.locator(backgroundSelector).boundingBox();
+    if (!box) throw new Error('固定卡片没有可用尺寸');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + deltaX,
+      box.y + box.height / 2 + deltaY,
+      { steps: 4 },
+    );
+    await page.mouse.up();
+    return panel.evaluate((node) => ({
+      xRatio: Number((node as SVGGElement).dataset.manualXRatio),
+      yRatio: Number((node as SVGGElement).dataset.manualYRatio),
+    }));
+  };
+  const teacher = map.locator('g.teacher-panel');
+  const foreign = map.locator('g.foreign-schools-panel');
+  const teacherPosition = await dragFixedPanel(
+    teacher,
+    'rect.teacher-panel-background',
+    -40,
+    30,
+  );
+  const foreignPosition = await dragFixedPanel(
+    foreign,
+    'rect.foreign-panel-background',
+    40,
+    -30,
+  );
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '3');
+
+  await page.getByTestId('save-image-button').click();
+  const exportScene = page.getByTestId('png-export-scene');
+  await expect.poll(async () => Number(
+    await exportScene.locator('g.teacher-panel').getAttribute('data-manual-x-ratio'),
+  )).toBeCloseTo(teacherPosition.xRatio, 5);
+  await expect.poll(async () => Number(
+    await exportScene.locator('g.teacher-panel').getAttribute('data-manual-y-ratio'),
+  )).toBeCloseTo(teacherPosition.yRatio, 5);
+  await expect.poll(async () => Number(
+    await exportScene.locator('g.foreign-schools-panel').getAttribute('data-manual-x-ratio'),
+  )).toBeCloseTo(foreignPosition.xRatio, 5);
+  await expect.poll(async () => Number(
+    await exportScene.locator('g.foreign-schools-panel').getAttribute('data-manual-y-ratio'),
+  )).toBeCloseTo(foreignPosition.yRatio, 5);
+  await page.getByTestId('cancel-save-image').click();
+  await expect(exportScene).toHaveCount(0);
 
   await page.getByTestId('save-image-rearrange-cards').click();
   await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
