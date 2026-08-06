@@ -30,6 +30,22 @@ describe('save image state', () => {
     });
   });
 
+  it('derives live drag dimensions from the drag-start snapshot', () => {
+    const state = new SaveImageState();
+    const initialDimensions = state.getSnapshot();
+    const initialMapRect = { x: 0, y: 0, width: 960, height: 600 };
+    state.applyMapResize(
+      initialMapRect,
+      { x: 0, y: 0, width: 800, height: 500 },
+      initialDimensions,
+    );
+    expect(state.applyMapResize(
+      initialMapRect,
+      { x: 0, y: 0, width: 700, height: 400 },
+      initialDimensions,
+    )).toMatchObject({ width: 2100, height: 1200 });
+  });
+
   it('constrains linked dimensions to the configured pixel limit', () => {
     const state = new SaveImageState();
     const snapshot = state.setWidth(8192);

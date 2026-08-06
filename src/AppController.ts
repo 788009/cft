@@ -224,6 +224,7 @@ export class AppController {
         },
       });
       this.renderer = renderer;
+      renderer.setRegionSelectionEnabled(!this.saveImage);
       renderer.setSaveImageFontScale(this.saveImageFontScale);
       renderer.setData(data);
       renderer.setSearchResult(this.searchResult);
@@ -269,6 +270,7 @@ export class AppController {
     this.finishInfoRectangleEditing();
     this.settings.setButtonVisible(false);
     this.search.setVisible(false);
+    this.renderer?.setRegionSelectionEnabled(false);
     this.saveImage = new SaveImageController(this.uiContainer, this.settings, {
       onExit: () => this.finishSaveImageMode(),
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
@@ -283,6 +285,7 @@ export class AppController {
     this.saveImage = null;
     this.saveImageFontScale = 1;
     this.renderer?.setSaveImageFontScale(1);
+    this.renderer?.setRegionSelectionEnabled(true);
     this.restoreMapViewport();
     this.settings.setButtonVisible(true);
     this.search.setVisible(true);
@@ -296,7 +299,9 @@ export class AppController {
     this.mapContainer.style.width = `${layout.mapRect.width}px`;
     this.mapContainer.style.height = `${layout.mapRect.height}px`;
     this.applyInfoRectangleMode(layout.mapRect.width, layout.mapRect.height);
-    this.renderer?.resize(layout.mapRect.width, layout.mapRect.height);
+    this.renderer?.resize(layout.mapRect.width, layout.mapRect.height, {
+      resetCardLayout: true,
+    });
   }
 
   private applySaveImageFontScale(scale: number): void {

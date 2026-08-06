@@ -67,6 +67,16 @@ describe('save image geometry', () => {
     })).toEqual({ x: 0, y: 0, width: 1000, height: 400 });
     expect(resizeSaveImageMapRect({
       initialMapRect,
+      handle: 'south',
+      deltaX: 100,
+      deltaY: 300,
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      minWidth: 120,
+      minHeight: 80,
+    })).toEqual({ x: 0, y: 0, width: 600, height: 700 });
+    expect(resizeSaveImageMapRect({
+      initialMapRect,
       handle: 'south-east',
       deltaX: -1000,
       deltaY: -1000,

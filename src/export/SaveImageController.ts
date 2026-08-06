@@ -2,6 +2,10 @@ import { defaultConfig } from '@/config';
 import {
   calculateAreaFontScale,
   calculateInitialSaveImageLayout,
+  createSaveImageModeLayout,
+  resizeSaveImageMapRect,
+  type ImageDimensions,
+  type SaveImageMapResizeHandle,
   type SaveImageModeLayout,
 } from './geometry';
 import { SaveImageState } from './SaveImageState';
@@ -20,8 +24,10 @@ export class SaveImageController {
   private readonly onFontScaleChange: (scale: number) => void;
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
+  private readonly resizeHandles: Map<SaveImageMapResizeHandle, HTMLDivElement>;
   private readonly state = new SaveImageState();
   private layout: SaveImageModeLayout;
+  private endMapResize: (() => void) | null = null;
   private widthInput!: HTMLInputElement;
   private heightInput!: HTMLInputElement;
   private fontScaleInput!: HTMLInputElement;
@@ -54,7 +60,8 @@ export class SaveImageController {
     settingsContent.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     scrollArea.append(this.createDimensionSettings(), settingsContent);
     this.menu.append(this.createHeader(), scrollArea);
-    this.root.append(this.menu);
+    this.resizeHandles = this.createResizeHandles();
+    this.root.append(this.menu, ...this.resizeHandles.values());
     container.append(this.root);
     this.syncLayout();
   }
@@ -74,11 +81,13 @@ export class SaveImageController {
   }
 
   public setVisible(visible: boolean): void {
+    if (!visible) this.endMapResize?.();
     this.root.classList.toggle('hidden', !visible);
     this.root.setAttribute('aria-hidden', String(!visible));
   }
 
   public destroy(): void {
+    this.endMapResize?.();
     this.root.remove();
   }
 
@@ -169,6 +178,37 @@ export class SaveImageController {
     return label;
   }
 
+  private createResizeHandles(): Map<SaveImageMapResizeHandle, HTMLDivElement> {
+    const handles = new Map<SaveImageMapResizeHandle, HTMLDivElement>();
+    const cursors: Record<SaveImageMapResizeHandle, string> = {
+      east: 'ew-resize',
+      south: 'ns-resize',
+      'south-east': 'nwse-resize',
+    };
+    for (const handle of ['east', 'south', 'south-east'] as const) {
+      const hit = document.createElement('div');
+      hit.dataset.testid = `save-image-map-resize-${handle}`;
+      hit.dataset.handle = handle;
+      hit.className = 'pointer-events-auto absolute touch-none';
+      hit.style.cursor = cursors[handle];
+      hit.addEventListener('pointerdown', (event) => this.beginMapResize(event, handle));
+
+      const visual = document.createElement('div');
+      visual.className = [
+        'pointer-events-none absolute left-1/2 top-1/2 box-border',
+        '-translate-x-1/2 -translate-y-1/2',
+      ].join(' ');
+      visual.style.width = `${defaultConfig.infoRectangleEditor.handleSize}px`;
+      visual.style.height = `${defaultConfig.infoRectangleEditor.handleSize}px`;
+      visual.style.border = '2px solid #ffffff';
+      visual.style.borderRadius = '2px';
+      visual.style.background = '#0f766e';
+      hit.append(visual);
+      handles.set(handle, hit);
+    }
+    return handles;
+  }
+
   private calculateLayout(): SaveImageModeLayout {
     return calculateInitialSaveImageLayout({
       viewportWidth: window.innerWidth,
@@ -187,8 +227,92 @@ export class SaveImageController {
     this.menu.dataset.placement = menuPlacement;
     this.menu.classList.toggle('border-l', menuPlacement === 'right');
     this.menu.classList.toggle('border-t', menuPlacement === 'bottom');
+    this.syncResizeHandles();
     this.onLayoutChange(this.layout);
     this.onFontScaleChange(this.getPreviewFontScale());
+  }
+
+  private syncResizeHandles(): void {
+    const { width, height } = this.layout.mapRect;
+    const hitSize = defaultConfig.infoRectangleEditor.handleHitSize;
+    const edgeWidth = Math.max(hitSize, width - hitSize);
+    const edgeHeight = Math.max(hitSize, height - hitSize);
+    const east = this.resizeHandles.get('east');
+    const south = this.resizeHandles.get('south');
+    const southEast = this.resizeHandles.get('south-east');
+    if (!east || !south || !southEast) return;
+
+    this.setHandleRect(east, width - hitSize / 2, hitSize / 2, hitSize, edgeHeight);
+    this.setHandleRect(south, hitSize / 2, height - hitSize / 2, edgeWidth, hitSize);
+    this.setHandleRect(
+      southEast,
+      width - hitSize / 2,
+      height - hitSize / 2,
+      hitSize,
+      hitSize,
+    );
+  }
+
+  private setHandleRect(
+    handle: HTMLElement,
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ): void {
+    handle.style.left = `${left}px`;
+    handle.style.top = `${top}px`;
+    handle.style.width = `${width}px`;
+    handle.style.height = `${height}px`;
+  }
+
+  private beginMapResize(
+    event: PointerEvent,
+    handle: SaveImageMapResizeHandle,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.endMapResize?.();
+
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const initialLayout = this.layout;
+    const initialDimensions: ImageDimensions = this.state.getSnapshot();
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== pointerId) return;
+      moveEvent.preventDefault();
+      const mapRect = resizeSaveImageMapRect({
+        initialMapRect: initialLayout.mapRect,
+        handle,
+        deltaX: moveEvent.clientX - startX,
+        deltaY: moveEvent.clientY - startY,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        minWidth: defaultConfig.infoRectangleEditor.minWidth,
+        minHeight: defaultConfig.infoRectangleEditor.minHeight,
+      });
+      this.layout = createSaveImageModeLayout(
+        window.innerWidth,
+        window.innerHeight,
+        mapRect,
+        initialLayout.menuPlacement,
+      );
+      this.state.applyMapResize(initialLayout.mapRect, mapRect, initialDimensions);
+      this.syncDimensionInputs();
+      this.syncLayout();
+    };
+    const end = (endEvent?: PointerEvent): void => {
+      if (endEvent && endEvent.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      this.endMapResize = null;
+    };
+    this.endMapResize = () => end();
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   }
 
   private getPreviewFontScale(): number {

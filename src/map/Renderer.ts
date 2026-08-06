@@ -83,6 +83,7 @@ export class MapRenderer {
   private domesticSchools: ProcessedData['domesticSchools'] = [];
   private readonly schoolOverlay: SchoolOverlay;
   private infoRectangleEditing = false;
+  private regionSelectionEnabled = true;
   private width: number;
   private height: number;
   private saveImageFontScale = 1;
@@ -224,6 +225,16 @@ export class MapRenderer {
     this.updateSchoolOverlay();
   }
 
+  public setRegionSelectionEnabled(enabled: boolean): void {
+    if (enabled === this.regionSelectionEnabled) return;
+    this.regionSelectionEnabled = enabled;
+    this.g.selectAll<SVGPathElement, unknown>('path.region-actionable')
+      .attr('role', enabled ? 'button' : null)
+      .attr('tabindex', enabled ? 0 : null);
+    this.updateRegionInteractionAvailability();
+    if (!enabled) this.schoolOverlay.clearHoveredRegion();
+  }
+
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
     this.schoolOverlay.setLocalLayoutOptimizationEnabled(enabled);
     this.schoolOverlay.resetLayout();
@@ -307,7 +318,11 @@ export class MapRenderer {
     this.schoolOverlay.setInteractionActive(false);
   }
 
-  public resize(width: number, height: number): void {
+  public resize(
+    width: number,
+    height: number,
+    options: { resetCardLayout?: boolean } = {},
+  ): void {
     if (this.destroyed) return;
     this.width = width;
     this.height = height;
@@ -316,6 +331,7 @@ export class MapRenderer {
     this.pathGenerator = d3.geoPath().projection(this.projection);
     this.g.selectAll<SVGPathElement, unknown>('path').attr('d', this.pathGenerator as any);
     this.updateRegionLabelGeometry();
+    if (options.resetCardLayout) this.schoolOverlay.resetLayout();
     this.updateSchoolOverlay();
   }
 
@@ -444,8 +460,7 @@ export class MapRenderer {
       
     this.layers.districts.transition().duration(250)
       .style('opacity', level === 'district' ? 1 : 0);
-    this.layers.provincesFill.style('pointer-events', level === 'province' ? 'auto' : 'none');
-    this.layers.cities.style('pointer-events', level === 'city' ? 'auto' : 'none');
+    this.updateRegionInteractionAvailability();
     this.updateRegionLabelVisibility();
   }
 
@@ -652,7 +667,7 @@ export class MapRenderer {
     const names = level === 'province' ? this.provinceNames : this.cityNames;
     const valid = level === 'province' ? this.validProvinces : this.validCities;
     const activate = (event: Event, feature: any): void => {
-      if (this.requestedLevel !== level) return;
+      if (!this.regionSelectionEnabled || this.requestedLevel !== level) return;
       const adcode = adcodeFor(feature);
       const name = names.get(adcode);
       if (!valid.has(adcode) || !name) return;
@@ -665,14 +680,22 @@ export class MapRenderer {
       .classed('region-actionable', (feature) => valid.has(adcodeFor(feature)))
       .attr('data-region-level', (feature) => valid.has(adcodeFor(feature)) ? level : null)
       .attr('data-region-adcode', (feature) => valid.has(adcodeFor(feature)) ? adcodeFor(feature) : null)
-      .attr('role', (feature) => valid.has(adcodeFor(feature)) ? 'button' : null)
-      .attr('tabindex', (feature) => valid.has(adcodeFor(feature)) ? 0 : null)
+      .attr('role', (feature) => (
+        this.regionSelectionEnabled && valid.has(adcodeFor(feature)) ? 'button' : null
+      ))
+      .attr('tabindex', (feature) => (
+        this.regionSelectionEnabled && valid.has(adcodeFor(feature)) ? 0 : null
+      ))
       .attr('aria-label', (feature) => {
         const name = names.get(adcodeFor(feature));
         return name ? `查看${name}详情` : null;
       })
       .on('pointerenter.line-highlight', (event: PointerEvent, feature) => {
-        if (event.pointerType === 'touch' || this.requestedLevel !== level) return;
+        if (
+          !this.regionSelectionEnabled ||
+          event.pointerType === 'touch' ||
+          this.requestedLevel !== level
+        ) return;
         const adcode = adcodeFor(feature);
         if (valid.has(adcode)) this.schoolOverlay.setHoveredRegion(level, adcode);
       })
@@ -684,6 +707,17 @@ export class MapRenderer {
       .on('keydown', (event: KeyboardEvent, feature) => {
         if (event.key === 'Enter' || event.key === ' ') activate(event, feature);
       });
+  }
+
+  private updateRegionInteractionAvailability(): void {
+    this.layers.provincesFill.style(
+      'pointer-events',
+      this.regionSelectionEnabled && this.requestedLevel === 'province' ? 'auto' : 'none',
+    );
+    this.layers.cities.style(
+      'pointer-events',
+      this.regionSelectionEnabled && this.requestedLevel === 'city' ? 'auto' : 'none',
+    );
   }
 
   private updateSchoolOverlay(): void {

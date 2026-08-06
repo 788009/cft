@@ -59,9 +59,13 @@ export class SaveImageState {
     return this.getSnapshot();
   }
 
-  public applyMapResize(initialMapRect: Rect, resizedMapRect: Rect): SaveImageStateSnapshot {
+  public applyMapResize(
+    initialMapRect: Rect,
+    resizedMapRect: Rect,
+    initialDimensions = this.dimensions,
+  ): SaveImageStateSnapshot {
     this.dimensions = this.constrainDimensions(scaleImageDimensionsForMapResize(
-      this.dimensions,
+      initialDimensions,
       initialMapRect,
       resizedMapRect,
     ));

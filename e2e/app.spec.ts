@@ -549,6 +549,106 @@ test('uses the save image map dimensions to select the range mode', async ({ pag
   await expect(infoRectangle).toHaveAttribute('height', '400');
 });
 
+test('resizes the save image map from three configured handles', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  const east = page.getByTestId('save-image-map-resize-east');
+  const south = page.getByTestId('save-image-map-resize-south');
+  const southEast = page.getByTestId('save-image-map-resize-south-east');
+  await expect(east).toBeVisible();
+  await expect(south).toBeVisible();
+  await expect(southEast).toBeVisible();
+  expect((await east.boundingBox())?.width).toBe(44);
+  expect((await east.boundingBox())?.height).toBeGreaterThan(44);
+  expect((await south.boundingBox())?.width).toBeGreaterThan(44);
+  expect((await south.boundingBox())?.height).toBe(44);
+  expect((await southEast.boundingBox())?.width).toBe(44);
+  expect((await southEast.boundingBox())?.height).toBe(44);
+
+  const eastBox = await east.boundingBox();
+  if (!eastBox) throw new Error('地图右边控制点没有可用尺寸');
+  await page.mouse.move(eastBox.x + eastBox.width / 2, eastBox.y + eastBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    eastBox.x + eastBox.width / 2 + 100,
+    eastBox.y + eastBox.height / 2,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+
+  await expect(map).toHaveCSS('width', '1060px');
+  await expect(map).toHaveCSS('height', '600px');
+  await expect(page.getByTestId('save-image-menu')).toHaveCSS('width', '380px');
+  await expect(page.getByTestId('save-image-width')).toHaveValue('3180');
+  await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
+
+  const southBox = await south.boundingBox();
+  if (!southBox) throw new Error('地图底边控制点没有可用尺寸');
+  await page.mouse.move(southBox.x + southBox.width / 2, southBox.y + southBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    southBox.x + southBox.width / 2,
+    southBox.y + southBox.height / 2 + 60,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(map).toHaveCSS('width', '1060px');
+  await expect(map).toHaveCSS('height', '660px');
+  await expect(page.getByTestId('save-image-height')).toHaveValue('1980');
+
+  const southEastBox = await southEast.boundingBox();
+  if (!southEastBox) throw new Error('地图右下角控制点没有可用尺寸');
+  await page.mouse.move(
+    southEastBox.x + southEastBox.width / 2,
+    southEastBox.y + southEastBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    southEastBox.x + southEastBox.width / 2 - 60,
+    southEastBox.y + southEastBox.height / 2 - 60,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(map).toHaveCSS('width', '1000px');
+  await expect(map).toHaveCSS('height', '600px');
+  await expect(page.getByTestId('save-image-menu')).toHaveCSS('width', '440px');
+  await expect(page.getByTestId('save-image-width')).toHaveValue('3000');
+  await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
+
+  const width = page.getByTestId('save-image-width');
+  await width.fill('3333');
+  await width.blur();
+  await expect(page.getByTestId('save-image-height')).toHaveValue('2000');
+});
+
+test('keeps map navigation but disables region selection in save image mode', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const mapGeometry = map.locator('g.map-geometry');
+  const region = map.locator('.layer-provinces-fill path.region-actionable').first();
+  await expect(region).toHaveAttribute('role', 'button');
+  const fill = await region.getAttribute('fill');
+  if (!fill) throw new Error('行政区缺少填充颜色');
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  await expect(region).not.toHaveAttribute('role', 'button');
+  await expect(region).not.toHaveAttribute('tabindex', '0');
+  await expect(region).toHaveAttribute('fill', fill);
+  await region.click({ force: true });
+  await expect(page.getByTestId('region-detail-dialog')).toHaveCount(0);
+  const initialTransform = await mapGeometry.getAttribute('transform');
+  await zoomMapToScale(page, 3);
+  await expect.poll(() => mapGeometry.getAttribute('transform')).not.toBe(initialTransform);
+
+  await page.getByTestId('exit-save-image-mode').click();
+  await expect(region).toHaveAttribute('role', 'button');
+});
+
 test('links temporary save image dimensions without changing the map ratio', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();
