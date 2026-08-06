@@ -88,10 +88,10 @@ export function createSaveImageModeLayout(
         x: normalizedMapRect.width,
         y: 0,
         width: rightWidth,
-        height: normalizedMapRect.height,
+        height: safeViewportHeight,
       },
       blankRects: bottomHeight > 0
-        ? [{ x: 0, y: normalizedMapRect.height, width: safeViewportWidth, height: bottomHeight }]
+        ? [{ x: 0, y: normalizedMapRect.height, width: normalizedMapRect.width, height: bottomHeight }]
         : [],
     };
   }
@@ -102,11 +102,11 @@ export function createSaveImageModeLayout(
     menuRect: {
       x: 0,
       y: normalizedMapRect.height,
-      width: normalizedMapRect.width,
+      width: safeViewportWidth,
       height: bottomHeight,
     },
     blankRects: rightWidth > 0
-      ? [{ x: normalizedMapRect.width, y: 0, width: rightWidth, height: safeViewportHeight }]
+      ? [{ x: normalizedMapRect.width, y: 0, width: rightWidth, height: normalizedMapRect.height }]
       : [],
   };
 }

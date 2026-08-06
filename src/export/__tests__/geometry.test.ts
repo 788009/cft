@@ -19,8 +19,8 @@ describe('save image geometry', () => {
 
     expect(layout).toEqual({
       mapRect: { x: 0, y: 0, width: 960, height: 600 },
-      menuRect: { x: 960, y: 0, width: 480, height: 600 },
-      blankRects: [{ x: 0, y: 600, width: 1440, height: 300 }],
+      menuRect: { x: 960, y: 0, width: 480, height: 900 },
+      blankRects: [{ x: 0, y: 600, width: 960, height: 300 }],
       menuPlacement: 'right',
     });
   });
@@ -47,8 +47,8 @@ describe('save image geometry', () => {
       'bottom',
     )).toEqual({
       mapRect: { x: 0, y: 0, width: 700, height: 500 },
-      menuRect: { x: 0, y: 500, width: 700, height: 300 },
-      blankRects: [{ x: 700, y: 0, width: 500, height: 800 }],
+      menuRect: { x: 0, y: 500, width: 1200, height: 300 },
+      blankRects: [{ x: 700, y: 0, width: 500, height: 500 }],
       menuPlacement: 'bottom',
     });
   });

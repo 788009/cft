@@ -37,13 +37,16 @@ export class SaveImageController {
     this.menu = document.createElement('aside');
     this.menu.dataset.testid = 'save-image-menu';
     this.menu.className = [
-      'pointer-events-auto absolute flex flex-col overflow-hidden border border-slate-300',
+      'pointer-events-auto absolute flex flex-col overflow-hidden border-slate-300',
       'bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900',
     ].join(' ');
-    this.menu.append(this.createHeader(), this.createDimensionSettings());
+    const scrollArea = document.createElement('div');
+    scrollArea.dataset.testid = 'save-image-menu-scroll-area';
+    scrollArea.className = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
     const settingsContent = this.settings.createContent(false);
-    settingsContent.className = 'min-h-0 flex-1 overflow-auto divide-y divide-slate-200 dark:divide-slate-700';
-    this.menu.append(settingsContent);
+    settingsContent.className = 'divide-y divide-slate-200 dark:divide-slate-700';
+    scrollArea.append(this.createDimensionSettings(), settingsContent);
+    this.menu.append(this.createHeader(), scrollArea);
     this.root.append(this.menu);
     container.append(this.root);
     this.syncLayout();
@@ -90,7 +93,7 @@ export class SaveImageController {
 
   private createDimensionSettings(): HTMLElement {
     const section = document.createElement('section');
-    section.className = 'grid shrink-0 gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-700';
+    section.className = 'grid gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-700';
     const heading = document.createElement('h3');
     heading.className = 'text-sm font-semibold text-slate-900 dark:text-slate-100';
     heading.textContent = '图片尺寸';
@@ -168,11 +171,14 @@ export class SaveImageController {
   }
 
   private syncLayout(): void {
-    const { menuRect } = this.layout;
+    const { menuRect, menuPlacement } = this.layout;
     this.menu.style.left = `${menuRect.x}px`;
     this.menu.style.top = `${menuRect.y}px`;
     this.menu.style.width = `${menuRect.width}px`;
     this.menu.style.height = `${menuRect.height}px`;
+    this.menu.dataset.placement = menuPlacement;
+    this.menu.classList.toggle('border-l', menuPlacement === 'right');
+    this.menu.classList.toggle('border-t', menuPlacement === 'bottom');
     this.onLayoutChange(this.layout);
   }
 

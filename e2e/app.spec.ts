@@ -472,7 +472,9 @@ test('enters save image mode with a shared settings menu and restores the main c
   const mapBox = await map.boundingBox();
   const menuBox = await menu.boundingBox();
   expect(mapBox).toMatchObject({ x: 0, y: 0, width: 960, height: 600 });
-  expect(menuBox).toMatchObject({ x: 960, y: 0, width: 480, height: 600 });
+  expect(menuBox).toMatchObject({ x: 960, y: 0, width: 480, height: 900 });
+  await expect(page.getByTestId('save-image-menu-scroll-area')).toContainText('图片尺寸');
+  await expect(page.getByTestId('save-image-menu-scroll-area')).toContainText('外观');
 
   await page.getByTestId('theme-mode-dark').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme-mode', 'dark');
