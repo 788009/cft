@@ -55,6 +55,7 @@ export class AppController {
   private renderVersion = 0;
   private started = false;
   private saveImage: SaveImageController | null = null;
+  private saveImageFontScale = 1;
 
   constructor() {
     this.mapContainer = this.requireElement('map-container');
@@ -234,6 +235,7 @@ export class AppController {
         },
       });
       this.renderer = renderer;
+      renderer.setSaveImageFontScale(this.saveImageFontScale);
       renderer.setData(data);
       renderer.setSearchResult(this.searchResult);
       renderer.setUiObstacles(this.searchObstacles);
@@ -281,6 +283,7 @@ export class AppController {
     this.saveImage = new SaveImageController(this.uiContainer, this.settings, {
       onExit: () => this.finishSaveImageMode(),
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
+      onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
     });
   }
 
@@ -288,6 +291,8 @@ export class AppController {
     if (!this.saveImage) return;
     this.saveImage.destroy();
     this.saveImage = null;
+    this.saveImageFontScale = 1;
+    this.renderer?.setSaveImageFontScale(1);
     this.restoreMapViewport();
     this.settings.setButtonVisible(true);
     this.search.setVisible(true);
@@ -301,6 +306,11 @@ export class AppController {
     this.mapContainer.style.width = `${layout.mapRect.width}px`;
     this.mapContainer.style.height = `${layout.mapRect.height}px`;
     this.renderer?.resize(layout.mapRect.width, layout.mapRect.height);
+  }
+
+  private applySaveImageFontScale(scale: number): void {
+    this.saveImageFontScale = scale;
+    this.renderer?.setSaveImageFontScale(scale);
   }
 
   private restoreMapViewport(): void {

@@ -85,6 +85,7 @@ export class MapRenderer {
   private infoRectangleEditing = false;
   private width: number;
   private height: number;
+  private saveImageFontScale = 1;
 
   private layers: {
     provincesFill: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -213,6 +214,13 @@ export class MapRenderer {
 
   public setShowMiddleSchool(show: boolean): void {
     this.schoolOverlay.setShowMiddleSchool(show);
+    this.updateSchoolOverlay();
+  }
+
+  public setSaveImageFontScale(scale: number): void {
+    this.saveImageFontScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    this.schoolOverlay.setFontScale(this.saveImageFontScale);
+    this.updateRegionLabelScale();
     this.updateSchoolOverlay();
   }
 
@@ -591,7 +599,7 @@ export class MapRenderer {
     this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
       .attr('x', (datum) => this.pathGenerator.centroid(datum.feature)[0])
       .attr('y', (datum) => this.pathGenerator.centroid(datum.feature)[1])
-      .attr('font-size', defaultConfig.regionLabelFontSize / this.currentTransform.k)
+      .attr('font-size', defaultConfig.regionLabelFontSize * this.saveImageFontScale / this.currentTransform.k)
       .style('visibility', (datum) => {
         const [x, y] = this.pathGenerator.centroid(datum.feature);
         return Number.isFinite(x) && Number.isFinite(y) ? null : 'hidden';
@@ -600,7 +608,7 @@ export class MapRenderer {
 
   private updateRegionLabelScale(): void {
     this.g.selectAll<SVGTextElement, RegionLabelDatum>('text.region-name-label')
-      .attr('font-size', defaultConfig.regionLabelFontSize / this.currentTransform.k);
+      .attr('font-size', defaultConfig.regionLabelFontSize * this.saveImageFontScale / this.currentTransform.k);
   }
 
   private updateRegionLabelFilter(): void {

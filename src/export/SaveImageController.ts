@@ -1,17 +1,23 @@
 import { defaultConfig } from '@/config';
-import { calculateInitialSaveImageLayout, type SaveImageModeLayout } from './geometry';
+import {
+  calculateAreaFontScale,
+  calculateInitialSaveImageLayout,
+  type SaveImageModeLayout,
+} from './geometry';
 import { SaveImageState } from './SaveImageState';
 import type { SettingsController } from '@/settings/SettingsController';
 
 export interface SaveImageControllerOptions {
   onExit: () => void;
   onLayoutChange: (layout: SaveImageModeLayout) => void;
+  onFontScaleChange: (scale: number) => void;
 }
 
 export class SaveImageController {
   private readonly settings: SettingsController;
   private readonly onExit: () => void;
   private readonly onLayoutChange: (layout: SaveImageModeLayout) => void;
+  private readonly onFontScaleChange: (scale: number) => void;
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
   private readonly state = new SaveImageState();
@@ -28,6 +34,7 @@ export class SaveImageController {
     this.settings = settings;
     this.onExit = options.onExit;
     this.onLayoutChange = options.onLayoutChange;
+    this.onFontScaleChange = options.onFontScaleChange;
     this.layout = this.calculateLayout();
 
     this.root = document.createElement('div');
@@ -43,7 +50,7 @@ export class SaveImageController {
     const scrollArea = document.createElement('div');
     scrollArea.dataset.testid = 'save-image-menu-scroll-area';
     scrollArea.className = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
-    const settingsContent = this.settings.createContent(false);
+    const settingsContent = this.settings.createContent(false, false);
     settingsContent.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     scrollArea.append(this.createDimensionSettings(), settingsContent);
     this.menu.append(this.createHeader(), scrollArea);
@@ -137,6 +144,7 @@ export class SaveImageController {
       const value = Number(this.fontScaleInput.value);
       if (Number.isFinite(value) && value > 0) this.state.setFontScaleMultiplier(value);
       this.fontScaleInput.value = String(this.state.getSnapshot().fontScaleMultiplier);
+      this.onFontScaleChange(this.getPreviewFontScale());
     });
     return section;
   }
@@ -180,6 +188,16 @@ export class SaveImageController {
     this.menu.classList.toggle('border-l', menuPlacement === 'right');
     this.menu.classList.toggle('border-t', menuPlacement === 'bottom');
     this.onLayoutChange(this.layout);
+    this.onFontScaleChange(this.getPreviewFontScale());
+  }
+
+  private getPreviewFontScale(): number {
+    const snapshot = this.state.getSnapshot();
+    return calculateAreaFontScale(
+      { width: this.layout.mapRect.width, height: this.layout.mapRect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+      snapshot.fontScaleMultiplier,
+    );
   }
 
   private syncDimensionInputs(): void {

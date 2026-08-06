@@ -456,18 +456,28 @@ test('shows the sanitized message as the final settings section', async ({ page 
 
 test('enters save image mode with a shared settings menu and restores the main controls', async ({ page }) => {
   await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const title = map.locator('g.school-label text.school-label-title').first();
+  const student = map.locator('g.school-label text.student-name').first();
+  await expect(title).toBeVisible();
+  const initialTitleSize = Number(await title.getAttribute('font-size'));
+  const initialStudentSize = Number(await student.getAttribute('font-size'));
   await page.getByTestId('settings-button').click();
   await page.getByTestId('open-save-image-mode').click();
 
   const mode = page.getByTestId('save-image-mode');
   const menu = page.getByTestId('save-image-menu');
-  const map = page.getByTestId('map-container');
   await expect(mode).toBeVisible();
   await expect(page.getByTestId('settings-button')).toBeHidden();
   await expect(page.getByTestId('search-control')).toBeHidden();
   await expect(page.getByTestId('save-image-button')).toBeDisabled();
   await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
   await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
+  await expect(menu.getByTestId('settings-message')).toHaveCount(0);
+  await expect.poll(async () => Number(await title.getAttribute('font-size')))
+    .toBeCloseTo(initialTitleSize * 2 / 3, 5);
+  await expect.poll(async () => Number(await student.getAttribute('font-size')))
+    .toBeCloseTo(initialStudentSize * 2 / 3, 5);
 
   const mapBox = await map.boundingBox();
   const menuBox = await menu.boundingBox();

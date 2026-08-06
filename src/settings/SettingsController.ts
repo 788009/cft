@@ -171,7 +171,10 @@ export class SettingsController {
     this.shell.body.append(this.createContent(true));
   };
 
-  public createContent(includeSaveImageEntry = false): HTMLDivElement {
+  public createContent(
+    includeSaveImageEntry = false,
+    includeMessage = true,
+  ): HTMLDivElement {
     const content = document.createElement('div');
     content.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     content.append(
@@ -204,7 +207,7 @@ export class SettingsController {
         this.createLayoutOptimizationSetting(),
       ]),
       ...(includeSaveImageEntry ? [this.createSaveImageSection()] : []),
-      this.createMessageSection(),
+      ...(includeMessage ? [this.createMessageSection()] : []),
     );
     this.updateChoices(content);
     return content;

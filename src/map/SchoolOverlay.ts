@@ -365,6 +365,7 @@ export class SchoolOverlay {
   private showInfoRectangle: boolean;
   private enableLocalLayoutOptimization: boolean;
   private showMiddleSchool: boolean;
+  private fontScale = 1;
   private infoRectangleEditing = false;
   private width = 0;
   private height = 0;
@@ -515,6 +516,10 @@ export class SchoolOverlay {
     this.middleSchoolLinesLayer.style('display', show ? '' : 'none');
     this.middleSchoolCardLayer.style('display', show ? '' : 'none');
     this.middleSchoolMarkerLayer.style('display', show ? '' : 'none');
+  }
+
+  public setFontScale(scale: number): void {
+    this.fontScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   }
 
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
@@ -1196,6 +1201,7 @@ export class SchoolOverlay {
   private renderMiddleSchoolCard(scene: MiddleSchoolCardScene | null): void {
     const cardStyle = defaultConfig.middleSchoolStyle;
     const labelStyle = defaultConfig.labelStyle;
+    const fontScale = this.fontScale;
     const cards = this.middleSchoolCardLayer
       .selectAll<SVGGElement, MiddleSchoolCardScene>('g.middle-school-card')
       .data(scene ? [scene] : [], (cardScene) => cardScene.info.name);
@@ -1216,7 +1222,7 @@ export class SchoolOverlay {
       .attr('vector-effect', 'non-scaling-stroke');
     entered.append('text')
       .attr('class', 'middle-school-card-name')
-      .attr('font-size', labelStyle.universityFontSize)
+      .attr('font-size', this.scaleFont(labelStyle.universityFontSize))
       .attr('font-weight', 600);
     entered.append('g').attr('class', 'middle-school-title-images');
     entered.append('g').attr('class', 'middle-school-card-address-lines');
@@ -1248,6 +1254,7 @@ export class SchoolOverlay {
       .attr('width', (cardScene) => cardScene.baseSize.width)
       .attr('height', (cardScene) => cardScene.baseSize.height);
     merged.select<SVGTextElement>('text.middle-school-card-name')
+      .attr('font-size', this.scaleFont(labelStyle.universityFontSize))
       .attr('x', cardStyle.cardPaddingX)
       .attr('y', cardStyle.cardPaddingY + labelStyle.universityFontSize)
       .text((cardScene) => cardScene.info.name);
@@ -1291,8 +1298,9 @@ export class SchoolOverlay {
       addressLines.enter()
         .append('text')
         .attr('class', 'middle-school-card-address')
-        .attr('font-size', labelStyle.studentFontSize)
+        .attr('font-size', fontScale * labelStyle.studentFontSize)
         .merge(addressLines)
+        .attr('font-size', fontScale * labelStyle.studentFontSize)
         .attr('x', cardStyle.cardPaddingX)
         .attr('y', (_, index) => (
           cardStyle.cardPaddingY + size.titleHeight + cardStyle.cardContentGap +
@@ -1374,6 +1382,7 @@ export class SchoolOverlay {
 
   private renderLabels(scenes: LabelScene[]): void {
     const style = defaultConfig.labelStyle;
+    const fontScale = this.fontScale;
     const onStudentSelect = this.onStudentSelect;
     const labels = this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
       .data(scenes, (scene) => scene.id);
@@ -1395,7 +1404,7 @@ export class SchoolOverlay {
     entered.append('text')
       .attr('class', 'school-label-title')
       .attr('fill', '#111827')
-      .attr('font-size', style.universityFontSize)
+      .attr('font-size', this.scaleFont(style.universityFontSize))
       .attr('font-weight', 600);
 
     const merged = entered.merge(labels)
@@ -1438,8 +1447,8 @@ export class SchoolOverlay {
       .attr('y', (scene) => style.paddingY + (
         scene.card.region ? style.regionFontSize : style.universityFontSize
       ))
-      .attr('font-size', (scene) => (
-        scene.card.region ? style.regionFontSize : style.universityFontSize
+      .attr('font-size', (scene) => this.scaleFont(
+        scene.card.region ? style.regionFontSize : style.universityFontSize,
       ))
       .text((scene) => scene.card.title);
 
@@ -1468,9 +1477,9 @@ export class SchoolOverlay {
         .append('text')
         .attr('class', 'card-university')
         .attr('fill', '#334155')
-        .attr('font-size', style.universityFontSize)
         .attr('font-weight', 600)
         .merge(universityLabels)
+        .attr('font-size', fontScale * style.universityFontSize)
         .attr('x', (item) => (
           style.paddingX + item.column * (cardColumnWidth + cardColumnGap)
         ))
@@ -1500,8 +1509,8 @@ export class SchoolOverlay {
         .append('text')
         .attr('class', 'student-name')
         .attr('fill', '#475569')
-        .attr('font-size', style.studentFontSize)
         .merge(studentLabels)
+        .attr('font-size', fontScale * style.studentFontSize)
         .attr('x', (item) => (
           style.paddingX +
           item.cardColumn * (cardColumnWidth + cardColumnGap) +
@@ -1667,7 +1676,7 @@ export class SchoolOverlay {
       .attr('y', -11)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
-      .attr('font-size', 10)
+      .attr('font-size', this.scaleFont(10))
       .attr('font-weight', 700)
       .attr('fill', '#ffffff');
     entered.append('title');
@@ -1695,6 +1704,7 @@ export class SchoolOverlay {
     merged.select<SVGGElement>('g.search-arrow-badge')
       .style('display', (group) => group.count > 1 ? '' : 'none');
     merged.select<SVGTextElement>('g.search-arrow-badge text')
+      .attr('font-size', this.scaleFont(10))
       .text((group) => group.count);
     merged.select<SVGTitleElement>('title')
       .text((group) => group.ids.join('、'));
@@ -1714,6 +1724,7 @@ export class SchoolOverlay {
 
   private renderTeacherPanel(scene: TeacherPanelScene | null): void {
     const style = defaultConfig.labelStyle;
+    const fontScale = this.fontScale;
     const panels = this.teacherLayer
       .selectAll<SVGGElement, TeacherPanelScene>('g.teacher-panel')
       .data(scene ? [scene] : []);
@@ -1733,7 +1744,7 @@ export class SchoolOverlay {
       .attr('vector-effect', 'non-scaling-stroke');
     entered.append('text')
       .attr('class', 'teacher-panel-title')
-      .attr('font-size', style.universityFontSize)
+      .attr('font-size', this.scaleFont(style.universityFontSize))
       .attr('font-weight', 600)
       .text('教师');
     entered.append('g').attr('class', 'teacher-panel-rows');
@@ -1749,6 +1760,7 @@ export class SchoolOverlay {
       .attr('width', (panel) => panel.baseSize.width)
       .attr('height', (panel) => panel.baseSize.height);
     merged.select<SVGTextElement>('text.teacher-panel-title')
+      .attr('font-size', this.scaleFont(style.universityFontSize))
       .attr('x', style.paddingX)
       .attr('y', style.paddingY + style.universityFontSize);
 
@@ -1762,13 +1774,14 @@ export class SchoolOverlay {
         .attr('class', 'teacher-panel-row');
       rowEnter.append('text')
         .attr('class', 'teacher-role')
-        .attr('font-size', style.studentFontSize);
+        .attr('font-size', fontScale * style.studentFontSize);
       rowEnter.append('g').attr('class', 'teacher-name-lines');
       const rowMerged = rowEnter.merge(rows)
         .attr('transform', (row) => (
           `translate(${style.paddingX},${style.paddingY + style.lineHeight * (1 + row.startLine)})`
         ));
       rowMerged.select<SVGTextElement>('text.teacher-role')
+        .attr('font-size', fontScale * style.studentFontSize)
         .attr('y', style.studentFontSize)
         .text((row) => row.teacher.role);
       rowMerged.each(function updateTeacherNameLines(row) {
@@ -1778,8 +1791,8 @@ export class SchoolOverlay {
         names.enter()
           .append('text')
           .attr('class', 'teacher-name')
-          .attr('font-size', style.studentFontSize)
           .merge(names)
+          .attr('font-size', fontScale * style.studentFontSize)
           .attr('x', layout.roleWidth + style.studentColumnGap)
           .attr('y', (_, index) => style.studentFontSize + index * style.lineHeight)
           .text((line) => line);
@@ -1805,6 +1818,7 @@ export class SchoolOverlay {
 
   private renderForeignPanel(scene: ForeignPanelScene | null): void {
     const style = defaultConfig.labelStyle;
+    const fontScale = this.fontScale;
     const onStudentSelect = this.onStudentSelect;
     const panels = this.foreignLayer.selectAll<SVGGElement, ForeignPanelScene>('g.foreign-schools-panel')
       .data(scene ? [scene] : []);
@@ -1851,12 +1865,13 @@ export class SchoolOverlay {
       groupEnter.append('text')
         .attr('class', 'foreign-school-title')
         .attr('fill', '#0f172a')
-        .attr('font-size', style.universityFontSize)
+        .attr('font-size', fontScale * style.universityFontSize)
         .attr('font-weight', 600);
 
       const groupMerged = groupEnter.merge(groups)
         .attr('transform', (school) => `translate(${style.paddingX},${schoolOffsets.get(school.university)})`);
       groupMerged.select<SVGTextElement>('text.foreign-school-title')
+        .attr('font-size', fontScale * style.universityFontSize)
         .attr('y', style.universityFontSize)
         .text((school) => school.university);
       groupMerged.each(function updateForeignStudents(school) {
@@ -1866,8 +1881,8 @@ export class SchoolOverlay {
           .append('text')
           .attr('class', 'student-name')
           .attr('fill', '#475569')
-          .attr('font-size', style.studentFontSize)
           .merge(students)
+          .attr('font-size', fontScale * style.studentFontSize)
           .attr('x', (_, index) => (
             (index % style.studentsPerRow) * (
               (panel.baseSize.width - style.paddingX * 2) / style.studentsPerRow
@@ -1911,5 +1926,9 @@ export class SchoolOverlay {
       .duration(defaultConfig.layoutTransitionDurationMs)
       .attr('opacity', 0)
       .remove();
+  }
+
+  private scaleFont(size: number): number {
+    return size * this.fontScale;
   }
 }
