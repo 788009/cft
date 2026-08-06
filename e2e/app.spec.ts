@@ -524,6 +524,31 @@ test('reapplies the initial map view when entering save image mode', async ({ pa
   }).toBeCloseTo(initialScale, 5);
 });
 
+test('uses the save image map dimensions to select the range mode', async ({ page }) => {
+  await page.setViewportSize({ width: 600, height: 900 });
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const infoRectangle = map.locator('rect.info-rectangle');
+  await expect(infoRectangle).toHaveAttribute('width', '600');
+  await expect(infoRectangle).toHaveAttribute('height', '400');
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  await expect(map).toHaveCSS('width', '600px');
+  await expect(map).toHaveCSS('height', '375px');
+  await expect(infoRectangle).toHaveAttribute('x', '150');
+  await expect(infoRectangle).toHaveAttribute('y', '93.75');
+  await expect(infoRectangle).toHaveAttribute('width', '300');
+  await expect(infoRectangle).toHaveAttribute('height', '187.5');
+
+  await page.getByTestId('exit-save-image-mode').click();
+  await expect(infoRectangle).toHaveAttribute('x', '0');
+  await expect(infoRectangle).toHaveAttribute('y', '250');
+  await expect(infoRectangle).toHaveAttribute('width', '600');
+  await expect(infoRectangle).toHaveAttribute('height', '400');
+});
+
 test('links temporary save image dimensions without changing the map ratio', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();

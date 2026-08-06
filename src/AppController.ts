@@ -14,6 +14,7 @@ import { BackgroundController } from '@/theme/BackgroundController';
 import {
   getDefaultInfoRectanglePlacement,
   getInfoRectangleMode,
+  type InfoRectangleMode,
   type InfoRectanglePlacement,
 } from '@/map/InfoRectangle';
 import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorController';
@@ -43,6 +44,7 @@ export class AppController {
   private showMiddleSchool = defaultConfig.showMiddleSchool;
   private enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization;
   private infoRectanglePlacement: InfoRectanglePlacement;
+  private infoRectangleMode: InfoRectangleMode;
   private infoRectangleEditing = false;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
@@ -76,6 +78,7 @@ export class AppController {
       window.innerWidth,
       window.innerHeight,
     );
+    this.infoRectangleMode = getInfoRectangleMode(window.innerWidth, window.innerHeight);
     this.details = new DetailController(
       this.uiContainer,
       this.showRegionNames,
@@ -176,32 +179,18 @@ export class AppController {
   }
 
   private readonly handleResize = (): void => {
-    const previousViewport = this.viewState.getSnapshot().viewport;
-    const previousMode = getInfoRectangleMode(
-      previousViewport.width,
-      previousViewport.height,
-    );
     this.viewState.updateViewport(window.innerWidth, window.innerHeight);
     const { viewport } = this.viewState.getSnapshot();
     if (this.saveImage) {
       this.saveImage.resize(viewport.width, viewport.height);
       return;
     }
-    const nextMode = getInfoRectangleMode(viewport.width, viewport.height);
-    if (nextMode !== previousMode) {
-      this.finishInfoRectangleEditing();
-      this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
-        viewport.width,
-        viewport.height,
-      );
-      this.renderer?.setInfoRectanglePlacement(this.infoRectanglePlacement);
-      this.details.setInfoRectanglePlacement(this.infoRectanglePlacement);
-    }
     this.applyViewport();
   };
 
   private applyViewport(): void {
     const { viewport } = this.viewState.getSnapshot();
+    this.applyInfoRectangleMode(viewport.width, viewport.height);
 
     if (this.renderer) {
       this.renderer.resize(viewport.width, viewport.height);
@@ -306,6 +295,7 @@ export class AppController {
     this.mapContainer.style.bottom = 'auto';
     this.mapContainer.style.width = `${layout.mapRect.width}px`;
     this.mapContainer.style.height = `${layout.mapRect.height}px`;
+    this.applyInfoRectangleMode(layout.mapRect.width, layout.mapRect.height);
     this.renderer?.resize(layout.mapRect.width, layout.mapRect.height);
   }
 
@@ -321,7 +311,18 @@ export class AppController {
     this.mapContainer.style.bottom = '';
     this.mapContainer.style.width = '';
     this.mapContainer.style.height = '';
+    this.applyInfoRectangleMode(window.innerWidth, window.innerHeight);
     this.renderer?.resize(window.innerWidth, window.innerHeight);
+  }
+
+  private applyInfoRectangleMode(width: number, height: number): void {
+    const nextMode = getInfoRectangleMode(width, height);
+    if (nextMode === this.infoRectangleMode) return;
+    this.finishInfoRectangleEditing();
+    this.infoRectangleMode = nextMode;
+    this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(width, height);
+    this.renderer?.setInfoRectanglePlacement(this.infoRectanglePlacement);
+    this.details.setInfoRectanglePlacement(this.infoRectanglePlacement);
   }
 
   private finishInfoRectangleEditing(): void {
