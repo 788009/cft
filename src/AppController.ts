@@ -285,6 +285,7 @@ export class AppController {
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
       onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
     });
+    this.renderer?.resetToInitialView();
   }
 
   private finishSaveImageMode(): void {

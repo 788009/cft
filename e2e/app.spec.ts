@@ -475,9 +475,15 @@ test('enters save image mode with a shared settings menu and restores the main c
   await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
   await expect(menu.getByTestId('settings-message')).toHaveCount(0);
   await expect.poll(async () => Number(await title.getAttribute('font-size')))
-    .toBeCloseTo(initialTitleSize * 2 / 3, 5);
+    .toBe(initialTitleSize);
   await expect.poll(async () => Number(await student.getAttribute('font-size')))
-    .toBeCloseTo(initialStudentSize * 2 / 3, 5);
+    .toBe(initialStudentSize);
+  await expect.poll(async () => Number(
+    await map.locator('g.school-overlay').getAttribute('data-label-scale'),
+  )).toBeCloseTo(2 / 3, 5);
+  await expect.poll(async () => Number(
+    await map.locator('g.school-label').first().getAttribute('data-label-scale'),
+  )).toBeCloseTo(2 / 3, 5);
 
   const mapBox = await map.boundingBox();
   const menuBox = await menu.boundingBox();
@@ -497,6 +503,25 @@ test('enters save image mode with a shared settings menu and restores the main c
 
   await page.getByTestId('settings-button').click();
   await expect(page.getByTestId('theme-mode-dark')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('reapplies the initial map view when entering save image mode', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const svg = map.locator('svg');
+  const mapGeometry = map.locator('g.map-geometry');
+  await zoomMapToScale(page, 3);
+  const zoomedTransform = await mapGeometry.getAttribute('transform');
+
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  await expect.poll(() => mapGeometry.getAttribute('transform')).not.toBe(zoomedTransform);
+  const initialScale = Number(await svg.getAttribute('data-initial-view-scale'));
+  await expect.poll(async () => {
+    const transform = await mapGeometry.getAttribute('transform');
+    return Number(transform?.match(/scale\(([^)]+)\)/)?.[1]);
+  }).toBeCloseTo(initialScale, 5);
 });
 
 test('links temporary save image dimensions without changing the map ratio', async ({ page }) => {

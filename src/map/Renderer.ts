@@ -319,6 +319,12 @@ export class MapRenderer {
     this.updateSchoolOverlay();
   }
 
+  public resetToInitialView(): void {
+    if (this.destroyed) return;
+    this.initialViewApplied = false;
+    this.applyInitialView();
+  }
+
   public destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
