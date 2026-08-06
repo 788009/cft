@@ -24,7 +24,7 @@ export class SaveImageState {
     },
     fontScaleMultiplier = defaultConfig.export.defaultFontScaleMultiplier,
   ) {
-    this.dimensions = this.constrainDimensions(dimensions);
+    this.dimensions = this.normalizeDimensions(dimensions);
     this.fontScaleMultiplier = this.requirePositive(fontScaleMultiplier, 'fontScaleMultiplier');
   }
 
@@ -43,19 +43,13 @@ export class SaveImageState {
 
   public setWidth(width: number): SaveImageStateSnapshot {
     const aspectRatio = this.dimensions.width / this.dimensions.height;
-    this.dimensions = this.constrainLinkedDimensions(
-      linkImageDimensions('width', width, aspectRatio),
-      aspectRatio,
-    );
+    this.dimensions = linkImageDimensions('width', width, aspectRatio);
     return this.getSnapshot();
   }
 
   public setHeight(height: number): SaveImageStateSnapshot {
     const aspectRatio = this.dimensions.width / this.dimensions.height;
-    this.dimensions = this.constrainLinkedDimensions(
-      linkImageDimensions('height', height, aspectRatio),
-      aspectRatio,
-    );
+    this.dimensions = linkImageDimensions('height', height, aspectRatio);
     return this.getSnapshot();
   }
 
@@ -64,7 +58,7 @@ export class SaveImageState {
     resizedMapRect: Rect,
     initialDimensions = this.dimensions,
   ): SaveImageStateSnapshot {
-    this.dimensions = this.constrainDimensions(scaleImageDimensionsForMapResize(
+    this.dimensions = this.normalizeDimensions(scaleImageDimensionsForMapResize(
       initialDimensions,
       initialMapRect,
       resizedMapRect,
@@ -77,34 +71,11 @@ export class SaveImageState {
     return this.getSnapshot();
   }
 
-  private constrainLinkedDimensions(
-    dimensions: ImageDimensions,
-    aspectRatio: number,
-  ): ImageDimensions {
-    const config = defaultConfig.export;
-    const maximumWidth = Math.min(
-      config.maxDimension,
-      config.maxDimension * aspectRatio,
-      Math.sqrt(config.maxTotalPixels * aspectRatio),
-    );
-    const minimumWidth = Math.max(config.minDimension, config.minDimension * aspectRatio);
-    const width = Math.min(maximumWidth, Math.max(minimumWidth, dimensions.width));
-    return linkImageDimensions('width', width, aspectRatio);
-  }
-
-  private constrainDimensions(dimensions: ImageDimensions): ImageDimensions {
-    const config = defaultConfig.export;
-    let width = Math.round(this.requirePositive(dimensions.width, 'width'));
-    let height = Math.round(this.requirePositive(dimensions.height, 'height'));
-    width = Math.min(config.maxDimension, Math.max(config.minDimension, width));
-    height = Math.min(config.maxDimension, Math.max(config.minDimension, height));
-    const pixels = width * height;
-    if (pixels > config.maxTotalPixels) {
-      const scale = Math.sqrt(config.maxTotalPixels / pixels);
-      width = Math.max(config.minDimension, Math.floor(width * scale));
-      height = Math.max(config.minDimension, Math.floor(height * scale));
-    }
-    return { width, height };
+  private normalizeDimensions(dimensions: ImageDimensions): ImageDimensions {
+    return {
+      width: Math.max(1, Math.round(this.requirePositive(dimensions.width, 'width'))),
+      height: Math.max(1, Math.round(this.requirePositive(dimensions.height, 'height'))),
+    };
   }
 
   private requirePositive(value: number, name: string): number {

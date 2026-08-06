@@ -283,7 +283,9 @@ export class AppController {
       onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
       onVisualScaleChange: (scale) => this.applySaveImageVisualScale(scale),
       onRearrangeCards: () => this.renderer?.rearrangeCards(),
-      onSave: (snapshot, onProgress) => this.saveMapImage(snapshot, onProgress),
+      onSave: (snapshot, onProgress, signal) => (
+        this.saveMapImage(snapshot, onProgress, signal)
+      ),
     });
     this.renderer?.resetToInitialView();
   }
@@ -329,6 +331,7 @@ export class AppController {
   private async saveMapImage(
     snapshot: SaveImageStateSnapshot,
     onProgress: (progress: number) => void,
+    signal: AbortSignal,
   ): Promise<void> {
     const renderer = this.renderer;
     if (!renderer) throw new Error('地图尚未加载完成');
@@ -359,6 +362,7 @@ export class AppController {
       },
       filename: `${defaultConfig.pageTitle}.png`,
       onProgress,
+      signal,
     });
   }
 

@@ -477,18 +477,35 @@ test('enters save image mode with a shared settings menu and restores the main c
   await expect(page.getByTestId('save-image-button')).toBeEnabled();
   await expect(page.getByTestId('save-image-progress')).toBeHidden();
   await expect(page.getByTestId('save-image-button-label')).toHaveText('保存图片');
+  await expect(page.getByTestId('cancel-save-image')).toBeHidden();
   await expect(page.getByTestId('save-image-status')).toBeHidden();
   await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
   await expect(page.getByTestId('save-image-height')).toHaveValue('1800');
   await expect(menu.getByTestId('settings-message')).toHaveCount(0);
   await page.getByTestId('save-image-width').fill('8192');
   await page.getByTestId('save-image-width').blur();
-  await expect(page.getByTestId('save-image-button')).toBeDisabled();
-  await expect(page.getByTestId('save-image-status')).toContainText('总像素数');
+  await expect(page.getByTestId('save-image-button')).toBeEnabled();
+  await expect(page.getByTestId('save-image-status')).toContainText('占用较多内存');
   await page.getByTestId('save-image-width').fill('2880');
   await page.getByTestId('save-image-width').blur();
   await expect(page.getByTestId('save-image-button')).toBeEnabled();
   await expect(page.getByTestId('save-image-status')).toBeHidden();
+  await page.getByTestId('save-image-width').fill('0');
+  await page.getByTestId('save-image-width').blur();
+  await expect(page.getByTestId('save-image-button')).toBeDisabled();
+  await expect(page.getByTestId('save-image-status')).toContainText('大于 0');
+  await page.getByTestId('save-image-width').fill('2880');
+  await page.getByTestId('save-image-width').blur();
+  await page.getByTestId('save-image-button').click();
+  await expect(page.getByTestId('cancel-save-image')).toBeVisible();
+  const activeSaveBox = await page.getByTestId('save-image-button').boundingBox();
+  const cancelBox = await page.getByTestId('cancel-save-image').boundingBox();
+  expect(activeSaveBox?.width).toBeGreaterThan((cancelBox?.width ?? 0) * 3);
+  await page.getByTestId('cancel-save-image').click();
+  await expect(page.getByTestId('save-image-status')).toContainText('已取消生成图片');
+  await expect(page.getByTestId('save-image-button')).toBeEnabled();
+  await expect(page.getByTestId('save-image-progress')).toBeHidden();
+  await expect(page.getByTestId('cancel-save-image')).toBeHidden();
   await expect.poll(async () => Number(await title.getAttribute('font-size')))
     .toBe(initialTitleSize);
   await expect.poll(async () => Number(await student.getAttribute('font-size')))

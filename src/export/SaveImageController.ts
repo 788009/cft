@@ -14,7 +14,10 @@ import {
   type SaveImageStateSnapshot,
 } from './SaveImageState';
 import type { SettingsController } from '@/settings/SettingsController';
-import { validateExportDimensions } from './validation';
+import {
+  getExportDimensionWarnings,
+  validateExportDimensions,
+} from './validation';
 
 export interface SaveImageControllerOptions {
   onExit: () => void;
@@ -25,6 +28,7 @@ export interface SaveImageControllerOptions {
   onSave: (
     snapshot: SaveImageStateSnapshot,
     onProgress: (progress: number) => void,
+    signal: AbortSignal,
   ) => Promise<void>;
 }
 
@@ -48,7 +52,10 @@ export class SaveImageController {
   private saveButton!: HTMLButtonElement;
   private saveButtonLabel!: HTMLSpanElement;
   private saveButtonProgress!: HTMLSpanElement;
+  private saveActions!: HTMLDivElement;
+  private cancelButton!: HTMLButtonElement;
   private saveStatus!: HTMLParagraphElement;
+  private generationAbortController: AbortController | null = null;
 
   constructor(
     container: HTMLElement,
@@ -109,6 +116,7 @@ export class SaveImageController {
 
   public destroy(): void {
     this.endMapResize?.();
+    this.generationAbortController?.abort();
     this.root.remove();
   }
 
@@ -165,6 +173,19 @@ export class SaveImageController {
     this.saveButtonLabel.className = 'relative z-10';
     this.saveButtonLabel.textContent = '保存图片';
     this.saveButton.append(this.saveButtonProgress, this.saveButtonLabel);
+    this.cancelButton = document.createElement('button');
+    this.cancelButton.type = 'button';
+    this.cancelButton.dataset.testid = 'cancel-save-image';
+    this.cancelButton.className = 'hidden min-h-11 rounded-md border border-red-300 px-3 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-700 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950 dark:focus-visible:outline-red-300';
+    this.cancelButton.textContent = '取消';
+    this.cancelButton.addEventListener('click', () => {
+      this.cancelButton.disabled = true;
+      this.generationAbortController?.abort();
+    });
+    this.saveActions = document.createElement('div');
+    this.saveActions.dataset.testid = 'save-image-actions';
+    this.saveActions.className = 'grid grid-cols-1 gap-2';
+    this.saveActions.append(this.saveButton, this.cancelButton);
     this.saveStatus = document.createElement('p');
     this.saveStatus.dataset.testid = 'save-image-status';
     this.saveStatus.className = 'hidden text-sm text-red-700 dark:text-red-300';
@@ -173,26 +194,46 @@ export class SaveImageController {
       if (this.saveButton.disabled) return;
       this.saveButton.disabled = true;
       this.saveButton.setAttribute('aria-busy', 'true');
+      this.cancelButton.disabled = false;
+      this.cancelButton.classList.remove('hidden');
+      this.saveActions.style.gridTemplateColumns = 'minmax(0, 4fr) minmax(72px, 1fr)';
       this.setSaveProgress(0);
       this.widthInput.disabled = true;
       this.heightInput.disabled = true;
       this.fontScaleInput.disabled = true;
-      this.setSaveError(null);
+      this.setSaveStatus(null);
+      const abortController = new AbortController();
+      this.generationAbortController = abortController;
+      let outcome: 'success' | 'cancelled' | 'failed' = 'success';
       try {
         await this.onSave(
           this.state.getSnapshot(),
           (progress) => this.setSaveProgress(progress),
+          abortController.signal,
         );
       } catch (error) {
-        this.setSaveError(error instanceof Error ? error.message : '图片生成失败');
+        if (isAbortError(error)) {
+          outcome = 'cancelled';
+          this.setSaveStatus('已取消生成图片', 'warning');
+        } else {
+          outcome = 'failed';
+          this.setSaveStatus(error instanceof Error ? error.message : '图片生成失败', 'error');
+        }
       } finally {
+        if (this.generationAbortController === abortController) {
+          this.generationAbortController = null;
+        }
         this.saveButton.disabled = false;
         this.saveButton.removeAttribute('aria-busy');
         this.saveButtonProgress.classList.add('hidden');
         this.saveButtonLabel.textContent = '保存图片';
+        this.cancelButton.classList.add('hidden');
+        this.cancelButton.disabled = false;
+        this.saveActions.style.gridTemplateColumns = '';
         this.widthInput.disabled = false;
         this.heightInput.disabled = false;
         this.fontScaleInput.disabled = false;
+        if (outcome === 'success') this.syncDimensionWarning();
       }
     });
     const rearrange = document.createElement('button');
@@ -206,7 +247,7 @@ export class SaveImageController {
       fields,
       fontLabel,
       rearrange,
-      this.saveButton,
+      this.saveActions,
       this.saveStatus,
     );
 
@@ -235,8 +276,7 @@ export class SaveImageController {
     input.dataset.testid = testId;
     input.setAttribute('aria-label', ariaLabel);
     input.className = 'min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus-visible:outline-teal-400';
-    input.min = String(defaultConfig.export.minDimension);
-    input.max = String(defaultConfig.export.maxDimension);
+    input.min = '1';
     input.value = String(value);
     return input;
   }
@@ -372,6 +412,7 @@ export class SaveImageController {
       );
       this.state.applyMapResize(initialLayout.mapRect, mapRect, initialDimensions);
       this.syncDimensionInputs();
+      this.syncDimensionWarning();
       this.syncLayout();
     };
     const end = (endEvent?: PointerEvent): void => {
@@ -410,19 +451,35 @@ export class SaveImageController {
       validateExportDimensions(candidate.width, candidate.height);
       if (changed === 'width') this.state.setWidth(value);
       else this.state.setHeight(value);
-      this.setSaveError(null);
+      this.syncDimensionWarning();
       this.saveButton.disabled = false;
       return true;
     } catch (error) {
-      this.setSaveError(error instanceof Error ? error.message : '图片尺寸无效');
+      this.setSaveStatus(
+        error instanceof Error ? error.message : '图片尺寸无效',
+        'error',
+      );
       this.saveButton.disabled = true;
       return false;
     }
   }
 
-  private setSaveError(message: string | null): void {
+  private syncDimensionWarning(): void {
+    const snapshot = this.state.getSnapshot();
+    const warnings = getExportDimensionWarnings(snapshot.width, snapshot.height);
+    this.setSaveStatus(warnings.length > 0 ? warnings.join('；') : null, 'warning');
+  }
+
+  private setSaveStatus(
+    message: string | null,
+    kind: 'warning' | 'error' = 'warning',
+  ): void {
     this.saveStatus.textContent = message ?? '';
     this.saveStatus.classList.toggle('hidden', !message);
+    this.saveStatus.classList.toggle('text-red-700', Boolean(message) && kind === 'error');
+    this.saveStatus.classList.toggle('dark:text-red-300', Boolean(message) && kind === 'error');
+    this.saveStatus.classList.toggle('text-amber-700', Boolean(message) && kind === 'warning');
+    this.saveStatus.classList.toggle('dark:text-amber-300', Boolean(message) && kind === 'warning');
   }
 
   private setSaveProgress(progress: number): void {
@@ -438,4 +495,8 @@ export class SaveImageController {
     this.widthInput.value = String(snapshot.width);
     this.heightInput.value = String(snapshot.height);
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
 }

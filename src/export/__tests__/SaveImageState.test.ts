@@ -46,10 +46,9 @@ describe('save image state', () => {
     )).toMatchObject({ width: 2100, height: 1200 });
   });
 
-  it('constrains linked dimensions to the configured pixel limit', () => {
+  it('preserves linked dimensions beyond the configured warning thresholds', () => {
     const state = new SaveImageState();
     const snapshot = state.setWidth(8192);
-    expect(snapshot.width * snapshot.height).toBeLessThanOrEqual(32_000_000);
-    expect(snapshot.aspectRatio).toBeCloseTo(1.6, 3);
+    expect(snapshot).toMatchObject({ width: 8192, height: 5120 });
   });
 });
