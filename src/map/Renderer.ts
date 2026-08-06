@@ -177,7 +177,10 @@ export class MapRenderer {
   }
 
   public setInteractionMode(mode: MapInteractionMode): void {
+    if (mode === this.interactionMode) return;
     this.interactionMode = mode;
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
   }
 
   public setSearchResult(result: SearchResult): void {
@@ -215,12 +218,16 @@ export class MapRenderer {
 
   public setShowMiddleSchool(show: boolean): void {
     this.schoolOverlay.setShowMiddleSchool(show);
+    this.schoolOverlay.resetLayout();
     this.updateSchoolOverlay();
   }
 
   public setSaveImageFontScale(scale: number): void {
-    this.saveImageFontScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const nextScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    if (nextScale === this.saveImageFontScale) return;
+    this.saveImageFontScale = nextScale;
     this.schoolOverlay.setFontScale(this.saveImageFontScale);
+    this.schoolOverlay.resetLayout();
     this.updateRegionLabelScale();
     this.updateSchoolOverlay();
   }
@@ -233,6 +240,16 @@ export class MapRenderer {
       .attr('tabindex', enabled ? 0 : null);
     this.updateRegionInteractionAvailability();
     if (!enabled) this.schoolOverlay.clearHoveredRegion();
+  }
+
+  public setSaveImageCardDraggingEnabled(enabled: boolean): void {
+    this.schoolOverlay.setCardDraggingEnabled(enabled);
+    this.updateSchoolOverlay();
+  }
+
+  public rearrangeCards(): void {
+    this.schoolOverlay.resetLayout();
+    this.updateSchoolOverlay();
   }
 
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {

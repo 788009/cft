@@ -15,6 +15,7 @@ export interface SaveImageControllerOptions {
   onExit: () => void;
   onLayoutChange: (layout: SaveImageModeLayout) => void;
   onFontScaleChange: (scale: number) => void;
+  onRearrangeCards: () => void;
 }
 
 export class SaveImageController {
@@ -22,6 +23,7 @@ export class SaveImageController {
   private readonly onExit: () => void;
   private readonly onLayoutChange: (layout: SaveImageModeLayout) => void;
   private readonly onFontScaleChange: (scale: number) => void;
+  private readonly onRearrangeCards: () => void;
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
   private readonly resizeHandles: Map<SaveImageMapResizeHandle, HTMLDivElement>;
@@ -41,6 +43,7 @@ export class SaveImageController {
     this.onExit = options.onExit;
     this.onLayoutChange = options.onLayoutChange;
     this.onFontScaleChange = options.onFontScaleChange;
+    this.onRearrangeCards = options.onRearrangeCards;
     this.layout = this.calculateLayout();
 
     this.root = document.createElement('div');
@@ -137,7 +140,13 @@ export class SaveImageController {
     save.dataset.testid = 'save-image-button';
     save.className = 'min-h-11 w-full rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-slate-950';
     save.textContent = '保存图片';
-    section.append(heading, fields, fontLabel, save);
+    const rearrange = document.createElement('button');
+    rearrange.type = 'button';
+    rearrange.dataset.testid = 'save-image-rearrange-cards';
+    rearrange.className = 'min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus-visible:outline-teal-400';
+    rearrange.textContent = '重排';
+    rearrange.addEventListener('click', this.onRearrangeCards);
+    section.append(heading, fields, fontLabel, rearrange, save);
 
     this.widthInput.addEventListener('change', () => {
       const value = Number(this.widthInput.value);

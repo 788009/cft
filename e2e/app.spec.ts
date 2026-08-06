@@ -649,6 +649,111 @@ test('keeps map navigation but disables region selection in save image mode', as
   await expect(region).toHaveAttribute('role', 'button');
 });
 
+test('drags save image cards with normalized positions and rearranges them', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+  await expect(overlay).toHaveAttribute('data-card-dragging-enabled', 'true');
+  await expect(page.getByTestId('save-image-rearrange-cards')).toBeVisible();
+
+  const label = map.locator('g.school-label').first();
+  await expect(label).toBeVisible();
+  const initialTransform = await label.getAttribute('transform');
+  const initialX = Number(await label.getAttribute('data-label-x'));
+  const initialY = Number(await label.getAttribute('data-label-y'));
+  const deltaX = initialX < 480 ? 48 : -48;
+  const deltaY = initialY < 300 ? 30 : -30;
+  const backgroundBox = await label.locator('rect.school-label-background').boundingBox();
+  if (!backgroundBox) throw new Error('信息卡片没有可用尺寸');
+  await page.mouse.move(
+    backgroundBox.x + backgroundBox.width / 2,
+    backgroundBox.y + backgroundBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    backgroundBox.x + backgroundBox.width / 2 + deltaX,
+    backgroundBox.y + backgroundBox.height / 2 + deltaY,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+
+  await expect.poll(() => label.getAttribute('transform')).not.toBe(initialTransform);
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
+  const normalized = await label.evaluate((node) => ({
+    xRatio: Number((node as SVGGElement).dataset.manualXRatio),
+    yRatio: Number((node as SVGGElement).dataset.manualYRatio),
+    x: Number((node as SVGGElement).dataset.labelX),
+    y: Number((node as SVGGElement).dataset.labelY),
+  }));
+  expect(normalized.xRatio).toBeCloseTo(normalized.x / 960, 5);
+  expect(normalized.yRatio).toBeCloseTo(normalized.y / 600, 5);
+
+  await page.getByTestId('save-image-rearrange-cards').click();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+  await expect(map.locator('g.school-label').first()).not.toHaveAttribute(
+    'data-manual-x-ratio',
+    /.+/,
+  );
+
+  await page.getByTestId('exit-save-image-mode').click();
+  await expect(overlay).toHaveAttribute('data-card-dragging-enabled', 'false');
+  const normalLabel = map.locator('g.school-label').first();
+  await expect(normalLabel).toBeVisible();
+  const normalBox = await normalLabel.locator('rect.school-label-background').boundingBox();
+  if (!normalBox) throw new Error('普通地图信息卡片没有可用尺寸');
+  await page.mouse.move(normalBox.x + normalBox.width / 2, normalBox.y + normalBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    normalBox.x + normalBox.width / 2 + 48,
+    normalBox.y + normalBox.height / 2 + 30,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+});
+
+test('clears manual card positions when the save image layout must reflow', async ({ page }) => {
+  await page.goto('/');
+  const map = page.getByTestId('map-container');
+  const overlay = map.locator('g.school-overlay');
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-save-image-mode').click();
+
+  const dragFirstCard = async (): Promise<void> => {
+    const background = map.locator('g.school-label').first()
+      .locator('rect.school-label-background');
+    const box = await background.boundingBox();
+    if (!box) throw new Error('信息卡片没有可用尺寸');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 + 20);
+    await page.mouse.up();
+    await expect(overlay).toHaveAttribute('data-manual-card-count', '1');
+  };
+
+  await dragFirstCard();
+  const east = page.getByTestId('save-image-map-resize-east');
+  const eastBox = await east.boundingBox();
+  if (!eastBox) throw new Error('地图右边控制点没有可用尺寸');
+  await page.mouse.move(eastBox.x + eastBox.width / 2, eastBox.y + eastBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(eastBox.x + eastBox.width / 2 + 20, eastBox.y + eastBox.height / 2);
+  await page.mouse.up();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+
+  await dragFirstCard();
+  await page.getByTestId('card-grouping-school').click();
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+
+  await dragFirstCard();
+  await page.getByTestId('interaction-mode-hide-and-reflow').click();
+  await dragFirstCard();
+  await zoomMapToScale(page, 3);
+  await expect(overlay).toHaveAttribute('data-manual-card-count', '0');
+});
+
 test('links temporary save image dimensions without changing the map ratio', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('settings-button').click();

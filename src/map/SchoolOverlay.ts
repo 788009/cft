@@ -7,6 +7,7 @@ import {
 import { defaultConfig, type CardGroupingMode, type Corner } from '@/config';
 import {
   calculateFittingLayout,
+  getConnectionPoint,
   isInside,
   isOverlap,
   type LayoutInput,
@@ -42,7 +43,20 @@ import { calculateArrows, type ArrowGroup } from '@/logic/arrow';
 import { calculateMiddleSchoolLineWidth } from './MiddleSchool';
 import { getDataAssetUrl } from '@/data/fetcher';
 
-const MIDDLE_SCHOOL_CARD_ID = 'middle-school-card';
+const MIDDLE_SCHOOL_CARD_ID = '\u0000middle-school-card';
+const TEACHER_PANEL_ID = '\u0000teacher-panel';
+const FOREIGN_PANEL_ID = '\u0000foreign-panel';
+
+interface NormalizedCardPosition {
+  xRatio: number;
+  yRatio: number;
+}
+
+interface DraggableCardScene {
+  id: string;
+  rect: Rect;
+  scale: number;
+}
 
 interface CardDatum {
   id: string;
@@ -64,6 +78,7 @@ interface MiddleSchoolConnection {
 }
 
 interface MiddleSchoolCardScene {
+  id: string;
   info: MiddleSchoolInfo;
   anchor: Point;
   connection: Point;
@@ -88,6 +103,7 @@ interface LabelScene {
 }
 
 interface ForeignPanelScene {
+  id: string;
   rect: Rect;
   baseSize: { width: number; height: number };
   scale: number;
@@ -95,11 +111,14 @@ interface ForeignPanelScene {
 }
 
 interface TeacherPanelScene {
+  id: string;
   rect: Rect;
   baseSize: { width: number; height: number };
   scale: number;
   teachers: TeacherEntry[];
 }
+
+type CardScene = LabelScene | MiddleSchoolCardScene | ForeignPanelScene | TeacherPanelScene;
 
 interface TeacherPanelRow {
   teacher: TeacherEntry;
@@ -359,6 +378,7 @@ export class SchoolOverlay {
     ['city', new Map()],
   ]);
   private readonly positionHistory = new Map<string, Rect>();
+  private readonly manualCardPositions = new Map<string, NormalizedCardPosition>();
   private readonly onStudentSelect?: (student: Student) => void;
   private readonly onInfoRectanglePlacementChange?: (placement: InfoRectanglePlacement) => void;
   private infoRectanglePlacement: InfoRectanglePlacement;
@@ -366,11 +386,14 @@ export class SchoolOverlay {
   private enableLocalLayoutOptimization: boolean;
   private showMiddleSchool: boolean;
   private fontScale = 1;
+  private cardDraggingEnabled = false;
   private infoRectangleEditing = false;
   private width = 0;
   private height = 0;
   private currentInfoRect: Rect = { x: 0, y: 0, width: 0, height: 0 };
   private endEditorDrag: (() => void) | null = null;
+  private endCardDrag: (() => void) | null = null;
+  private suppressStudentSelectionUntil = 0;
   private hoveredSchoolId: string | null = null;
   private hoveredRegion: { level: 'province' | 'city'; adcode: string } | null = null;
   private touchSelectedSchoolId: string | null = null;
@@ -405,6 +428,8 @@ export class SchoolOverlay {
       .attr('data-label-spacing', defaultConfig.labelSpacing)
       .attr('data-local-layout-optimization', String(this.enableLocalLayoutOptimization))
       .attr('data-show-middle-school', String(this.showMiddleSchool))
+      .attr('data-card-dragging-enabled', 'false')
+      .attr('data-manual-card-count', 0)
       .style('pointer-events', 'none');
     this.infoRectangle = this.root.append('rect')
       .attr('class', 'info-rectangle')
@@ -522,6 +547,13 @@ export class SchoolOverlay {
     this.fontScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
   }
 
+  public setCardDraggingEnabled(enabled: boolean): void {
+    if (enabled === this.cardDraggingEnabled) return;
+    this.cardDraggingEnabled = enabled;
+    this.root.attr('data-card-dragging-enabled', String(enabled));
+    if (!enabled) this.resetLayout();
+  }
+
   public setLocalLayoutOptimizationEnabled(enabled: boolean): void {
     this.enableLocalLayoutOptimization = enabled;
     this.root.attr('data-local-layout-optimization', String(enabled));
@@ -624,7 +656,10 @@ export class SchoolOverlay {
   }
 
   public resetLayout(): void {
+    this.endCardDrag?.();
     this.positionHistory.clear();
+    this.manualCardPositions.clear();
+    this.root.attr('data-manual-card-count', 0);
     for (const layer of [
       this.linesLayer,
       this.anchorsLayer,
@@ -744,6 +779,7 @@ export class SchoolOverlay {
         height: baseTeacherSize.height * scale * fontScale,
       };
       return {
+        id: TEACHER_PANEL_ID,
         rect: rectAtCornerAvoidingObstacles(
           scaledSize,
           canvasRect,
@@ -764,6 +800,7 @@ export class SchoolOverlay {
         height: baseForeignSize.height * scale * fontScale,
       };
       return {
+        id: FOREIGN_PANEL_ID,
         rect: rectAtCornerAvoidingObstacles(
           scaledSize,
           canvasRect,
@@ -795,7 +832,11 @@ export class SchoolOverlay {
       )));
     const layoutHistory = historyConflictsWithFixedPanel
       ? new Map<string, Rect>()
-      : this.positionHistory;
+      : new Map(this.positionHistory);
+    for (const input of baseVisibleInputs) {
+      const manualRect = this.getManualCardRect(input.id, input, canvasRect);
+      if (manualRect) layoutHistory.set(input.id, manualRect);
+    }
     const fittingLayout = calculateFittingLayout(baseVisibleInputs, layoutHistory, {
       minScale: defaultConfig.labelScale.min,
       scaleStep: defaultConfig.labelScale.step,
@@ -829,8 +870,14 @@ export class SchoolOverlay {
         return teacherAllowed && foreignAllowed;
       },
     });
-    const teacherScene = createTeacherScene(fittingLayout.scale);
-    const foreignScene = createForeignScene(fittingLayout.scale);
+    const teacherScene = this.applyManualFixedScenePosition(
+      createTeacherScene(fittingLayout.scale),
+      canvasRect,
+    );
+    const foreignScene = this.applyManualFixedScenePosition(
+      createForeignScene(fittingLayout.scale),
+      canvasRect,
+    );
     const baseInputsById = new Map(baseVisibleInputs.map((input) => [input.id, input]));
 
     const scenes: LabelScene[] = [];
@@ -839,13 +886,18 @@ export class SchoolOverlay {
       const rect = fittingLayout.layout.get(input.id);
       const baseInput = baseInputsById.get(input.id);
       if (!rect || !baseInput) continue;
-      this.positionHistory.set(input.id, rect);
+      const sceneRect = this.getManualCardRect(input.id, rect, canvasRect) ?? rect;
+      const connection = this.manualCardPositions.has(input.id)
+        ? getConnectionPoint(input.anchor, sceneRect)
+        : fittingLayout.connections.get(input.id) ?? input.anchor;
+      this.positionHistory.set(input.id, sceneRect);
       if (input.id === MIDDLE_SCHOOL_CARD_ID && this.middleSchool) {
         middleSchoolCardScene = {
+          id: MIDDLE_SCHOOL_CARD_ID,
           info: this.middleSchool,
           anchor: input.anchor,
-          connection: fittingLayout.connections.get(input.id) ?? input.anchor,
-          rect,
+          connection,
+          rect: sceneRect,
           baseSize: middleSchoolCardSize(this.middleSchool),
           scale: fittingLayout.scale * fontScale,
         };
@@ -857,8 +909,8 @@ export class SchoolOverlay {
         id: input.id,
         card,
         anchor: input.anchor,
-        connection: fittingLayout.connections.get(input.id) ?? input.anchor,
-        rect,
+        connection,
+        rect: sceneRect,
         baseSize: baseCardSizes.get(input.id) ?? {
           width: baseInput.width / fontScale,
           height: baseInput.height / fontScale,
@@ -911,6 +963,7 @@ export class SchoolOverlay {
 
   public destroy(): void {
     this.endEditorDrag?.();
+    this.endCardDrag?.();
     document.removeEventListener('pointerdown', this.handleDocumentPointerDown, true);
     this.root.interrupt();
     this.root.selectAll('*').interrupt();
@@ -1042,6 +1095,127 @@ export class SchoolOverlay {
       x: (event.clientX - bounds.left) * this.width / bounds.width,
       y: (event.clientY - bounds.top) * this.height / bounds.height,
     };
+  }
+
+  private getManualCardRect(
+    id: string,
+    size: { width: number; height: number },
+    bounds: Rect,
+  ): Rect | null {
+    const position = this.manualCardPositions.get(id);
+    if (!position) return null;
+    return this.constrainCardRect({
+      x: position.xRatio * this.width,
+      y: position.yRatio * this.height,
+      width: size.width,
+      height: size.height,
+    }, bounds);
+  }
+
+  private applyManualFixedScenePosition<T extends DraggableCardScene>(
+    scene: T | null,
+    bounds: Rect,
+  ): T | null {
+    if (!scene) return null;
+    const rect = this.getManualCardRect(scene.id, scene.rect, bounds);
+    return rect ? { ...scene, rect } : scene;
+  }
+
+  private beginCardDrag(
+    event: PointerEvent,
+    scene: CardScene,
+    group: SVGGElement,
+  ): void {
+    if (!this.cardDraggingEnabled || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.endCardDrag?.();
+
+    const pointerId = event.pointerId;
+    const start = this.clientToSvgPoint(event);
+    const initialRect = { ...scene.rect };
+    const margin = defaultConfig.canvasMargin;
+    const bounds: Rect = {
+      x: margin,
+      y: margin,
+      width: Math.max(0, this.width - margin * 2),
+      height: Math.max(0, this.height - margin * 2),
+    };
+    let moved = false;
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== pointerId) return;
+      moveEvent.preventDefault();
+      const point = this.clientToSvgPoint(moveEvent);
+      const rect = this.constrainCardRect({
+        ...initialRect,
+        x: initialRect.x + point.x - start.x,
+        y: initialRect.y + point.y - start.y,
+      }, bounds);
+      moved ||= Math.abs(rect.x - initialRect.x) > 1 || Math.abs(rect.y - initialRect.y) > 1;
+      scene.rect = rect;
+      this.manualCardPositions.set(scene.id, {
+        xRatio: this.width > 0 ? rect.x / this.width : 0,
+        yRatio: this.height > 0 ? rect.y / this.height : 0,
+      });
+      this.root.attr('data-manual-card-count', this.manualCardPositions.size);
+      if (this.positionHistory.has(scene.id)) this.positionHistory.set(scene.id, rect);
+      this.updateDraggedCard(group, scene);
+    };
+    const end = (endEvent?: PointerEvent): void => {
+      if (endEvent && endEvent.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      if (moved) this.suppressStudentSelectionUntil = performance.now() + 300;
+      this.endCardDrag = null;
+    };
+    this.endCardDrag = () => end();
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  }
+
+  private constrainCardRect(rect: Rect, bounds: Rect): Rect {
+    const maximumX = Math.max(bounds.x, bounds.x + bounds.width - rect.width);
+    const maximumY = Math.max(bounds.y, bounds.y + bounds.height - rect.height);
+    return {
+      ...rect,
+      x: Math.min(maximumX, Math.max(bounds.x, rect.x)),
+      y: Math.min(maximumY, Math.max(bounds.y, rect.y)),
+    };
+  }
+
+  private updateDraggedCard(group: SVGGElement, scene: CardScene): void {
+    const normalized = this.manualCardPositions.get(scene.id);
+    select(group)
+      .interrupt()
+      .attr('transform', `translate(${scene.rect.x},${scene.rect.y}) scale(${scene.scale})`)
+      .attr('data-label-x', scene.rect.x)
+      .attr('data-label-y', scene.rect.y)
+      .attr('data-card-x', scene.rect.x)
+      .attr('data-card-y', scene.rect.y)
+      .attr('data-panel-x', scene.rect.x)
+      .attr('data-panel-y', scene.rect.y)
+      .attr('data-manual-x-ratio', () => normalized?.xRatio ?? null)
+      .attr('data-manual-y-ratio', () => normalized?.yRatio ?? null);
+    if (!('anchor' in scene) || !('connection' in scene)) return;
+    scene.connection = getConnectionPoint(scene.anchor, scene.rect);
+    if (scene.id === MIDDLE_SCHOOL_CARD_ID) {
+      select(group).select<SVGLineElement>('line.middle-school-card-line')
+        .attr('x1', (scene.anchor.x - scene.rect.x) / scene.scale)
+        .attr('y1', (scene.anchor.y - scene.rect.y) / scene.scale)
+        .attr('x2', (scene.connection.x - scene.rect.x) / scene.scale)
+        .attr('y2', (scene.connection.y - scene.rect.y) / scene.scale);
+      return;
+    }
+    this.linesLayer.selectAll<SVGLineElement, LabelScene>('line.school-line')
+      .filter((lineScene) => lineScene.id === scene.id)
+      .attr('x2', scene.connection.x)
+      .attr('y2', scene.connection.y);
+  }
+
+  private shouldSuppressStudentSelection(): boolean {
+    return performance.now() < this.suppressStudentSelectionUntil;
   }
 
   private getAnchoredCards(): AnchoredCardDatum[] {
@@ -1250,8 +1424,20 @@ export class SchoolOverlay {
       .attr('data-card-width', (cardScene) => cardScene.rect.width)
       .attr('data-card-height', (cardScene) => cardScene.rect.height)
       .attr('data-card-scale', (cardScene) => cardScene.scale)
+      .attr('data-manual-x-ratio', (cardScene) => (
+        this.manualCardPositions.get(cardScene.id)?.xRatio ?? null
+      ))
+      .attr('data-manual-y-ratio', (cardScene) => (
+        this.manualCardPositions.get(cardScene.id)?.yRatio ?? null
+      ))
       .classed('has-title-image', (cardScene) => Boolean(cardScene.info.titleImg))
-      .classed('has-dark-title-image', (cardScene) => Boolean(cardScene.info.titleImgDark));
+      .classed('has-dark-title-image', (cardScene) => Boolean(cardScene.info.titleImgDark))
+      .style('pointer-events', this.cardDraggingEnabled ? 'all' : 'none')
+      .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
+      .style('touch-action', () => this.cardDraggingEnabled ? 'none' : null)
+      .on('pointerdown.card-drag', (event: PointerEvent, cardScene) => (
+        this.beginCardDrag(event, cardScene, event.currentTarget as SVGGElement)
+      ));
 
     merged.select<SVGLineElement>('line.middle-school-card-line')
       .attr('x1', (cardScene) => (
@@ -1399,6 +1585,7 @@ export class SchoolOverlay {
   private renderLabels(scenes: LabelScene[]): void {
     const style = defaultConfig.labelStyle;
     const onStudentSelect = this.onStudentSelect;
+    const shouldSuppressStudentSelection = () => this.shouldSuppressStudentSelection();
     const labels = this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
       .data(scenes, (scene) => scene.id);
     const entered = labels.enter()
@@ -1436,6 +1623,13 @@ export class SchoolOverlay {
       .attr('data-label-width', (scene) => scene.rect.width)
       .attr('data-label-height', (scene) => scene.rect.height)
       .attr('data-label-scale', (scene) => scene.scale)
+      .attr('data-manual-x-ratio', (scene) => this.manualCardPositions.get(scene.id)?.xRatio ?? null)
+      .attr('data-manual-y-ratio', (scene) => this.manualCardPositions.get(scene.id)?.yRatio ?? null)
+      .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
+      .style('touch-action', () => this.cardDraggingEnabled ? 'none' : null)
+      .on('pointerdown.card-drag', (event: PointerEvent, scene) => (
+        this.beginCardDrag(event, scene, event.currentTarget as SVGGElement)
+      ))
       .on('pointerenter.line-highlight', (event: PointerEvent, scene) => {
         if (event.pointerType === 'touch') return;
         this.hoveredSchoolId = scene.id;
@@ -1540,6 +1734,10 @@ export class SchoolOverlay {
         .attr('tabindex', 0)
         .attr('aria-label', (item) => `查看${item.student.name}详情`)
         .on('click', (event: MouseEvent, item) => {
+          if (shouldSuppressStudentSelection()) {
+            event.preventDefault();
+            return;
+          }
           (event.currentTarget as SVGTextElement).focus();
           onStudentSelect?.(item.student);
         })
@@ -1769,7 +1967,15 @@ export class SchoolOverlay {
       .attr('data-panel-y', (panel) => panel.rect.y)
       .attr('data-panel-width', (panel) => panel.rect.width)
       .attr('data-panel-height', (panel) => panel.rect.height)
-      .attr('data-label-scale', (panel) => panel.scale);
+      .attr('data-label-scale', (panel) => panel.scale)
+      .attr('data-manual-x-ratio', (panel) => this.manualCardPositions.get(panel.id)?.xRatio ?? null)
+      .attr('data-manual-y-ratio', (panel) => this.manualCardPositions.get(panel.id)?.yRatio ?? null)
+      .style('pointer-events', this.cardDraggingEnabled ? 'all' : 'none')
+      .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
+      .style('touch-action', () => this.cardDraggingEnabled ? 'none' : null)
+      .on('pointerdown.card-drag', (event: PointerEvent, panel) => (
+        this.beginCardDrag(event, panel, event.currentTarget as SVGGElement)
+      ));
     merged.select<SVGRectElement>('rect.teacher-panel-background')
       .attr('width', (panel) => panel.baseSize.width)
       .attr('height', (panel) => panel.baseSize.height);
@@ -1833,6 +2039,7 @@ export class SchoolOverlay {
   private renderForeignPanel(scene: ForeignPanelScene | null): void {
     const style = defaultConfig.labelStyle;
     const onStudentSelect = this.onStudentSelect;
+    const shouldSuppressStudentSelection = () => this.shouldSuppressStudentSelection();
     const panels = this.foreignLayer.selectAll<SVGGElement, ForeignPanelScene>('g.foreign-schools-panel')
       .data(scene ? [scene] : []);
     const entered = panels.enter()
@@ -1856,7 +2063,14 @@ export class SchoolOverlay {
       .attr('data-panel-y', (panel) => panel.rect.y)
       .attr('data-panel-width', (panel) => panel.rect.width)
       .attr('data-panel-height', (panel) => panel.rect.height)
-      .attr('data-label-scale', (panel) => panel.scale);
+      .attr('data-label-scale', (panel) => panel.scale)
+      .attr('data-manual-x-ratio', (panel) => this.manualCardPositions.get(panel.id)?.xRatio ?? null)
+      .attr('data-manual-y-ratio', (panel) => this.manualCardPositions.get(panel.id)?.yRatio ?? null)
+      .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
+      .style('touch-action', () => this.cardDraggingEnabled ? 'none' : null)
+      .on('pointerdown.card-drag', (event: PointerEvent, panel) => (
+        this.beginCardDrag(event, panel, event.currentTarget as SVGGElement)
+      ));
     merged.select<SVGRectElement>('rect.foreign-panel-background')
       .attr('width', (panel) => panel.baseSize.width)
       .attr('height', (panel) => panel.baseSize.height);
@@ -1910,6 +2124,10 @@ export class SchoolOverlay {
           .attr('tabindex', 0)
           .attr('aria-label', (student) => `查看${student.name}详情`)
           .on('click', (event: MouseEvent, student) => {
+            if (shouldSuppressStudentSelection()) {
+              event.preventDefault();
+              return;
+            }
             (event.currentTarget as SVGTextElement).focus();
             onStudentSelect?.(student);
           })
