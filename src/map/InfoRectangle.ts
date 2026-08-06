@@ -18,9 +18,20 @@ export type InfoRectangleResizeHandle =
   | 'w'
   | 'nw';
 
-export function getDefaultInfoRectanglePlacement(): InfoRectanglePlacement {
-  const widthRatio = defaultConfig.infoRectangleWidthRatio;
-  const heightRatio = defaultConfig.infoRectangleHeightRatio;
+export function getDefaultInfoRectanglePlacement(
+  viewportWidth?: number,
+  viewportHeight?: number,
+): InfoRectanglePlacement {
+  let widthRatio = defaultConfig.infoRectangleWidthRatio;
+  let heightRatio = defaultConfig.infoRectangleHeightRatio;
+  if (
+    viewportWidth !== undefined &&
+    viewportHeight !== undefined &&
+    viewportHeight > viewportWidth
+  ) {
+    widthRatio = defaultConfig.portraitInfoRectangleWidthRatio;
+    heightRatio = widthRatio * (viewportWidth / viewportHeight) ** 2;
+  }
   return {
     xRatio: (1 - widthRatio) / 2,
     yRatio: (1 - heightRatio) / 2,

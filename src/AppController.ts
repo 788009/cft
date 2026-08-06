@@ -21,7 +21,6 @@ import type { SearchResult } from '@/logic/search';
 import type { Rect } from '@/logic/layout';
 
 export class AppController {
-  private readonly orientationGuide: HTMLElement;
   private readonly mapContainer: HTMLElement;
   private readonly uiContainer: HTMLElement;
   private readonly viewState: ViewState;
@@ -38,7 +37,7 @@ export class AppController {
   private showInfoRectangle = defaultConfig.showInfoRectangle;
   private showMiddleSchool = defaultConfig.showMiddleSchool;
   private enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization;
-  private infoRectanglePlacement = getDefaultInfoRectanglePlacement();
+  private infoRectanglePlacement: InfoRectanglePlacement;
   private infoRectangleEditing = false;
   private dataPromise: Promise<ProcessedData> | null = null;
   private renderer: MapRenderer | null = null;
@@ -52,10 +51,13 @@ export class AppController {
   private started = false;
 
   constructor() {
-    this.orientationGuide = this.requireElement('orientation-guide');
     this.mapContainer = this.requireElement('map-container');
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
+    this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
+      window.innerWidth,
+      window.innerHeight,
+    );
     this.details = new DetailController(
       this.uiContainer,
       this.showRegionNames,
@@ -161,28 +163,23 @@ export class AppController {
   }
 
   private readonly handleResize = (): void => {
+    const previousOrientation = this.viewState.getSnapshot().viewport.orientation;
     this.viewState.updateViewport(window.innerWidth, window.innerHeight);
+    const { viewport } = this.viewState.getSnapshot();
+    if (viewport.orientation !== previousOrientation) {
+      this.finishInfoRectangleEditing();
+      this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
+        viewport.width,
+        viewport.height,
+      );
+      this.renderer?.setInfoRectanglePlacement(this.infoRectanglePlacement);
+      this.details.setInfoRectanglePlacement(this.infoRectanglePlacement);
+    }
     this.applyViewport();
   };
 
   private applyViewport(): void {
     const { viewport } = this.viewState.getSnapshot();
-    const isPortrait = viewport.orientation === 'portrait';
-
-    this.orientationGuide.classList.toggle('hidden', !isPortrait);
-    this.orientationGuide.setAttribute('aria-hidden', String(!isPortrait));
-    this.mapContainer.classList.toggle('hidden', isPortrait);
-    this.uiContainer.classList.toggle('hidden', isPortrait);
-
-    if (isPortrait) {
-      this.finishInfoRectangleEditing();
-      this.renderVersion += 1;
-      this.renderer?.destroy();
-      this.renderer = null;
-      this.details.closeAll();
-      this.settings.close();
-      return;
-    }
 
     if (this.renderer) {
       this.renderer.resize(viewport.width, viewport.height);
@@ -263,7 +260,8 @@ export class AppController {
   }
 
   private resetInfoRectanglePlacement(): void {
-    const placement: InfoRectanglePlacement = getDefaultInfoRectanglePlacement();
+    const { viewport } = this.viewState.getSnapshot();
+    const placement = getDefaultInfoRectanglePlacement(viewport.width, viewport.height);
     this.infoRectanglePlacement = placement;
     this.renderer?.setInfoRectanglePlacement(placement);
     this.details.setInfoRectanglePlacement(placement);

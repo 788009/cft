@@ -11,8 +11,8 @@ import {
 const bounds = { x: 20, y: 20, width: 960, height: 560 };
 
 describe('information rectangle editing', () => {
-  it('resolves the configurable default as a centered rectangle', () => {
-    const placement = getDefaultInfoRectanglePlacement();
+  it('resolves the configurable landscape default as a centered rectangle', () => {
+    const placement = getDefaultInfoRectanglePlacement(1000, 600);
     expect(placement).toEqual({
       xRatio: 0.25,
       yRatio: 0.25,
@@ -25,6 +25,25 @@ describe('information rectangle editing', () => {
       width: 500,
       height: 300,
     });
+  });
+
+  it('uses a centered rotated-similar rectangle across the portrait width', () => {
+    const placement = getDefaultInfoRectanglePlacement(600, 900);
+    expect(placement).toEqual({
+      xRatio: 0,
+      yRatio: 5 / 18,
+      widthRatio: 1,
+      heightRatio: 4 / 9,
+    });
+
+    const rectangle = getInfoRectangle(600, 900, placement);
+    expect(rectangle).toEqual({
+      x: 0,
+      y: 250,
+      width: 600,
+      height: 400,
+    });
+    expect(rectangle.width / rectangle.height).toBe(900 / 600);
   });
 
   it('round-trips pixel geometry through normalized placement', () => {

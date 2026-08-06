@@ -1,25 +1,35 @@
 import { expect, test } from '@playwright/test';
 import { centerDomesticSchools, zoomMapToScale } from './helpers';
 
-test('switches between portrait guidance and the landscape map', async ({ page }) => {
+test('renders in both orientations and resets the default range on orientation changes', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await page.goto('/');
 
-  const guide = page.getByTestId('orientation-guide');
   const map = page.getByTestId('map-container');
-  await expect(guide).toBeHidden();
+  const infoRectangle = map.locator('rect.info-rectangle');
   await expect(map.locator('svg')).toBeVisible();
   await expect(map.locator('.layer-provinces-fill path')).not.toHaveCount(0);
+  await expect(infoRectangle).toHaveAttribute('x', '225');
+  await expect(infoRectangle).toHaveAttribute('y', '150');
+  await expect(infoRectangle).toHaveAttribute('width', '450');
+  await expect(infoRectangle).toHaveAttribute('height', '300');
 
   await page.setViewportSize({ width: 600, height: 900 });
-  await expect(guide).toBeVisible();
-  await expect(map).toBeHidden();
-  await expect(map.locator('svg')).toHaveCount(0);
+  await expect(map.locator('svg')).toBeVisible();
+  await expect(page.getByTestId('settings-button')).toBeVisible();
+  await expect(page.getByTestId('search-toggle')).toBeVisible();
+  await expect(infoRectangle).toHaveAttribute('x', '0');
+  await expect(infoRectangle).toHaveAttribute('y', '250');
+  await expect(infoRectangle).toHaveAttribute('width', '600');
+  await expect(infoRectangle).toHaveAttribute('height', '400');
 
   await page.setViewportSize({ width: 900, height: 600 });
-  await expect(guide).toBeHidden();
   await expect(map.locator('svg')).toBeVisible();
   await expect(map.locator('.layer-provinces-fill path')).not.toHaveCount(0);
+  await expect(infoRectangle).toHaveAttribute('x', '225');
+  await expect(infoRectangle).toHaveAttribute('y', '150');
+  await expect(infoRectangle).toHaveAttribute('width', '450');
+  await expect(infoRectangle).toHaveAttribute('height', '300');
 });
 
 test('updates strict school search highlights without moving the map', async ({ page }) => {
