@@ -199,7 +199,7 @@ export class SettingsController {
           (value) => this.selectCardGroupingMode(value),
         ),
         this.createChoiceGroup(
-          '移动和缩放',
+          '移动和缩放时',
           '移动和缩放时的信息卡片显示方式',
           'interaction-mode',
           MODE_OPTIONS,
