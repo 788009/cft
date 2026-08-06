@@ -188,6 +188,7 @@ export class SettingsController {
         ),
         this.createBackgroundSetting(),
       ]),
+      ...(includeSaveImageEntry ? [this.createSaveImageSection()] : []),
       this.createSection('地图信息', [this.createMapInformationSettings()]),
       this.createSection('信息卡片', [
         this.createChoiceGroup(
@@ -206,7 +207,6 @@ export class SettingsController {
         ),
         this.createLayoutOptimizationSetting(),
       ]),
-      ...(includeSaveImageEntry ? [this.createSaveImageSection()] : []),
       ...(includeMessage ? [this.createMessageSection()] : []),
     );
     this.updateChoices(content);

@@ -406,6 +406,12 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   const stableMode = page.getByTestId('interaction-mode-stable');
   const reflowMode = page.getByTestId('interaction-mode-hide-and-reflow');
   await expect(dialog).toBeVisible();
+  expect((await dialog.locator('section > h3').allTextContents()).slice(0, 4)).toEqual([
+    '外观',
+    '保存图片',
+    '地图信息',
+    '信息卡片',
+  ]);
   await expect(reflowMode).toHaveAttribute('aria-checked', 'true');
   await expect(stableMode).toHaveAttribute('aria-checked', 'false');
   await stableMode.click();
