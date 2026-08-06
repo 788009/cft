@@ -475,6 +475,8 @@ test('enters save image mode with a shared settings menu and restores the main c
   await expect(page.getByTestId('settings-button')).toBeHidden();
   await expect(page.getByTestId('search-control')).toBeHidden();
   await expect(page.getByTestId('save-image-button')).toBeEnabled();
+  await expect(page.getByTestId('save-image-progress')).toBeHidden();
+  await expect(page.getByTestId('save-image-button-label')).toHaveText('保存图片');
   await expect(page.getByTestId('save-image-status')).toBeHidden();
   await expect(page.getByTestId('save-image-width')).toHaveValue('2880');
   await expect(page.getByTestId('save-image-height')).toHaveValue('1800');

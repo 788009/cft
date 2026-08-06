@@ -22,7 +22,10 @@ export interface SaveImageControllerOptions {
   onFontScaleChange: (scale: number) => void;
   onVisualScaleChange: (scale: number) => void;
   onRearrangeCards: () => void;
-  onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
+  onSave: (
+    snapshot: SaveImageStateSnapshot,
+    onProgress: (progress: number) => void,
+  ) => Promise<void>;
 }
 
 export class SaveImageController {
@@ -32,7 +35,7 @@ export class SaveImageController {
   private readonly onFontScaleChange: (scale: number) => void;
   private readonly onVisualScaleChange: (scale: number) => void;
   private readonly onRearrangeCards: () => void;
-  private readonly onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
+  private readonly onSave: SaveImageControllerOptions['onSave'];
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
   private readonly resizeHandles: Map<SaveImageMapResizeHandle, HTMLDivElement>;
@@ -43,6 +46,8 @@ export class SaveImageController {
   private heightInput!: HTMLInputElement;
   private fontScaleInput!: HTMLInputElement;
   private saveButton!: HTMLButtonElement;
+  private saveButtonLabel!: HTMLSpanElement;
+  private saveButtonProgress!: HTMLSpanElement;
   private saveStatus!: HTMLParagraphElement;
 
   constructor(
@@ -150,8 +155,16 @@ export class SaveImageController {
     this.saveButton = document.createElement('button');
     this.saveButton.type = 'button';
     this.saveButton.dataset.testid = 'save-image-button';
-    this.saveButton.className = 'min-h-11 w-full rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-slate-950';
-    this.saveButton.textContent = '保存图片';
+    this.saveButton.className = 'relative min-h-11 w-full overflow-hidden rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-slate-950';
+    this.saveButtonProgress = document.createElement('span');
+    this.saveButtonProgress.dataset.testid = 'save-image-progress';
+    this.saveButtonProgress.className = 'pointer-events-none absolute inset-y-0 left-0 hidden bg-teal-950/30 dark:bg-teal-950/25';
+    this.saveButtonProgress.setAttribute('aria-hidden', 'true');
+    this.saveButtonLabel = document.createElement('span');
+    this.saveButtonLabel.dataset.testid = 'save-image-button-label';
+    this.saveButtonLabel.className = 'relative z-10';
+    this.saveButtonLabel.textContent = '保存图片';
+    this.saveButton.append(this.saveButtonProgress, this.saveButtonLabel);
     this.saveStatus = document.createElement('p');
     this.saveStatus.dataset.testid = 'save-image-status';
     this.saveStatus.className = 'hidden text-sm text-red-700 dark:text-red-300';
@@ -159,18 +172,24 @@ export class SaveImageController {
     this.saveButton.addEventListener('click', async () => {
       if (this.saveButton.disabled) return;
       this.saveButton.disabled = true;
-      this.saveButton.textContent = '正在生成';
+      this.saveButton.setAttribute('aria-busy', 'true');
+      this.setSaveProgress(0);
       this.widthInput.disabled = true;
       this.heightInput.disabled = true;
       this.fontScaleInput.disabled = true;
       this.setSaveError(null);
       try {
-        await this.onSave(this.state.getSnapshot());
+        await this.onSave(
+          this.state.getSnapshot(),
+          (progress) => this.setSaveProgress(progress),
+        );
       } catch (error) {
         this.setSaveError(error instanceof Error ? error.message : '图片生成失败');
       } finally {
         this.saveButton.disabled = false;
-        this.saveButton.textContent = '保存图片';
+        this.saveButton.removeAttribute('aria-busy');
+        this.saveButtonProgress.classList.add('hidden');
+        this.saveButtonLabel.textContent = '保存图片';
         this.widthInput.disabled = false;
         this.heightInput.disabled = false;
         this.fontScaleInput.disabled = false;
@@ -404,6 +423,14 @@ export class SaveImageController {
   private setSaveError(message: string | null): void {
     this.saveStatus.textContent = message ?? '';
     this.saveStatus.classList.toggle('hidden', !message);
+  }
+
+  private setSaveProgress(progress: number): void {
+    const normalized = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0));
+    const percentage = Math.round(normalized * 100);
+    this.saveButtonProgress.classList.remove('hidden');
+    this.saveButtonProgress.style.width = `${percentage}%`;
+    this.saveButtonLabel.textContent = `正在生成 ${percentage}%`;
   }
 
   private syncDimensionInputs(): void {

@@ -57,11 +57,15 @@ export interface PngExportRequest {
   settings: PngExportSettings;
   background: PngExportBackground;
   filename: string;
+  onProgress?: (progress: number) => void;
 }
 
 export async function exportMapToPng(request: PngExportRequest): Promise<void> {
+  const reportProgress = (progress: number): void => request.onProgress?.(progress);
   validateExportDimensions(request.width, request.height);
+  reportProgress(0.03);
   await waitForDocumentFonts();
+  reportProgress(0.1);
 
   const host = createRenderHost(request.width, request.height);
   document.body.append(host);
@@ -81,17 +85,28 @@ export async function exportMapToPng(request: PngExportRequest): Promise<void> {
     renderer.setSaveImageVisualScale(request.visualScale);
     renderer.setData(request.data);
     await renderer.renderBaseMap();
+    reportProgress(0.4);
     await renderer.applySnapshot(request.mapSnapshot);
     await waitForRenderSettlement();
+    reportProgress(0.6);
 
     const svg = renderer.getSvgElement();
     svg.setAttribute('width', String(request.width));
     svg.setAttribute('height', String(request.height));
     await addBackground(svg, request.background, request.width, request.height);
+    reportProgress(0.68);
     await inlineSvgImages(svg);
+    reportProgress(0.78);
     inlineComputedSvgStyles(svg);
-    const png = await renderSvgToPng(svg, request.width, request.height);
+    reportProgress(0.82);
+    const png = await renderSvgToPng(
+      svg,
+      request.width,
+      request.height,
+      reportProgress,
+    );
     downloadBlob(png, request.filename);
+    reportProgress(1);
   } finally {
     renderer.destroy();
     host.remove();
@@ -208,19 +223,24 @@ async function renderSvgToPng(
   svg: SVGSVGElement,
   width: number,
   height: number,
+  reportProgress: (progress: number) => void,
 ): Promise<Blob> {
   const markup = new XMLSerializer().serializeToString(svg);
   const svgBlob = new Blob([markup], { type: 'image/svg+xml;charset=utf-8' });
   const objectUrl = URL.createObjectURL(svgBlob);
   try {
     const image = await loadImage(objectUrl);
+    reportProgress(0.9);
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('浏览器无法创建图片画布');
     context.drawImage(image, 0, 0, width, height);
-    return await canvasToPngBlob(canvas);
+    reportProgress(0.95);
+    const png = await canvasToPngBlob(canvas);
+    reportProgress(0.99);
+    return png;
   } catch (error) {
     throw new Error('PNG 图片生成失败', { cause: error });
   } finally {
