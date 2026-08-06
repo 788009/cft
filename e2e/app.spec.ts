@@ -660,6 +660,7 @@ test('drags save image cards with normalized positions and rearranges them', asy
 
   const label = map.locator('g.school-label').first();
   await expect(label).toBeVisible();
+  await expect(label).toHaveAttribute('data-block-map-navigation', 'true');
   const initialTransform = await label.getAttribute('transform');
   const initialX = Number(await label.getAttribute('data-label-x'));
   const initialY = Number(await label.getAttribute('data-label-y'));
@@ -1127,6 +1128,10 @@ test('moves and resizes the information range in its dedicated editing mode', as
   await expect(page.getByTestId('settings-button')).toBeHidden();
   await expect(page.getByTestId('info-rectangle-editor-controls')).toBeVisible();
   await expect(page.getByTestId('info-rectangle-editor')).toBeVisible();
+  await expect(page.getByTestId('info-rectangle-editor')).toHaveAttribute(
+    'data-block-map-navigation',
+    'true',
+  );
   await expect(infoRectangle).toBeVisible();
   await expect(map.locator('g.school-label').first()).toBeHidden();
   await expect(map.locator('line.school-line').first()).toBeHidden();
@@ -1323,6 +1328,12 @@ test('highlights school lines from card and region hover', async ({ page }) => {
 
 test.describe('touch line highlighting', () => {
   test.use({ hasTouch: true });
+
+  test('keeps map touch gestures under application control', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('map-container').locator('svg'))
+      .toHaveCSS('touch-action', 'none');
+  });
 
   test('keeps a tapped card line highlighted until another area is tapped', async ({ page }) => {
     await page.goto('/');

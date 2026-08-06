@@ -121,7 +121,8 @@ export class MapRenderer {
       .attr('height', '100%')
       .attr('viewBox', `0 0 ${width} ${height}`)
       .attr('data-map-level', 'province')
-      .style('display', 'block');
+      .style('display', 'block')
+      .style('touch-action', 'none');
 
     this.g = this.svg.append('g').attr('class', 'map-geometry');
 
@@ -150,6 +151,7 @@ export class MapRenderer {
     this.levelManager = new LevelManager();
 
     this.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+      .filter((event: Event) => this.shouldHandleMapNavigation(event))
       .scaleExtent([defaultConfig.mapZoomExtent.min, defaultConfig.mapZoomExtent.max])
       .on('start', () => this.handleZoomStart())
       .on('zoom', (event) => this.handleZoom(event))
@@ -278,6 +280,16 @@ export class MapRenderer {
   private handleZoomStart(): void {
     if (this.destroyed) return;
     this.zoomInteractionChanged = false;
+  }
+
+  private shouldHandleMapNavigation(event: Event): boolean {
+    const inputEvent = event as MouseEvent;
+    if ((inputEvent.ctrlKey && event.type !== 'wheel') || inputEvent.button) return false;
+    const target = event.target;
+    return !(
+      target instanceof Element &&
+      target.closest('[data-block-map-navigation="true"]')
+    );
   }
 
   private handleZoom(event: d3.D3ZoomEvent<SVGSVGElement, unknown>) {

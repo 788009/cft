@@ -459,6 +459,7 @@ export class SchoolOverlay {
     this.editorLayer = this.root.append('g')
       .attr('class', 'info-rectangle-editor')
       .attr('data-testid', 'info-rectangle-editor')
+      .attr('data-block-map-navigation', 'true')
       .style('display', 'none')
       .style('pointer-events', 'none')
       .style('touch-action', 'none');
@@ -1424,6 +1425,9 @@ export class SchoolOverlay {
       .attr('data-card-width', (cardScene) => cardScene.rect.width)
       .attr('data-card-height', (cardScene) => cardScene.rect.height)
       .attr('data-card-scale', (cardScene) => cardScene.scale)
+      .attr('data-block-map-navigation', () => (
+        this.cardDraggingEnabled ? 'true' : null
+      ))
       .attr('data-manual-x-ratio', (cardScene) => (
         this.manualCardPositions.get(cardScene.id)?.xRatio ?? null
       ))
@@ -1623,6 +1627,9 @@ export class SchoolOverlay {
       .attr('data-label-width', (scene) => scene.rect.width)
       .attr('data-label-height', (scene) => scene.rect.height)
       .attr('data-label-scale', (scene) => scene.scale)
+      .attr('data-block-map-navigation', () => (
+        this.cardDraggingEnabled ? 'true' : null
+      ))
       .attr('data-manual-x-ratio', (scene) => this.manualCardPositions.get(scene.id)?.xRatio ?? null)
       .attr('data-manual-y-ratio', (scene) => this.manualCardPositions.get(scene.id)?.yRatio ?? null)
       .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
@@ -1968,6 +1975,9 @@ export class SchoolOverlay {
       .attr('data-panel-width', (panel) => panel.rect.width)
       .attr('data-panel-height', (panel) => panel.rect.height)
       .attr('data-label-scale', (panel) => panel.scale)
+      .attr('data-block-map-navigation', () => (
+        this.cardDraggingEnabled ? 'true' : null
+      ))
       .attr('data-manual-x-ratio', (panel) => this.manualCardPositions.get(panel.id)?.xRatio ?? null)
       .attr('data-manual-y-ratio', (panel) => this.manualCardPositions.get(panel.id)?.yRatio ?? null)
       .style('pointer-events', this.cardDraggingEnabled ? 'all' : 'none')
@@ -2064,6 +2074,9 @@ export class SchoolOverlay {
       .attr('data-panel-width', (panel) => panel.rect.width)
       .attr('data-panel-height', (panel) => panel.rect.height)
       .attr('data-label-scale', (panel) => panel.scale)
+      .attr('data-block-map-navigation', () => (
+        this.cardDraggingEnabled ? 'true' : null
+      ))
       .attr('data-manual-x-ratio', (panel) => this.manualCardPositions.get(panel.id)?.xRatio ?? null)
       .attr('data-manual-y-ratio', (panel) => this.manualCardPositions.get(panel.id)?.yRatio ?? null)
       .style('cursor', () => this.cardDraggingEnabled ? 'move' : null)
