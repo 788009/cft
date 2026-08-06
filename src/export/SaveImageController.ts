@@ -42,6 +42,7 @@ export class SaveImageController {
   private readonly onSave: SaveImageControllerOptions['onSave'];
   private readonly root: HTMLDivElement;
   private readonly menu: HTMLElement;
+  private readonly blankSeparator: HTMLDivElement;
   private readonly resizeHandles: Map<SaveImageMapResizeHandle, HTMLDivElement>;
   private readonly state = new SaveImageState();
   private layout: SaveImageModeLayout;
@@ -81,6 +82,11 @@ export class SaveImageController {
       'pointer-events-auto absolute flex flex-col overflow-hidden border-slate-300',
       'bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900',
     ].join(' ');
+    this.blankSeparator = document.createElement('div');
+    this.blankSeparator.dataset.testid = 'save-image-blank-separator';
+    this.blankSeparator.className = [
+      'pointer-events-none absolute border-slate-300 dark:border-slate-700',
+    ].join(' ');
     const scrollArea = document.createElement('div');
     scrollArea.dataset.testid = 'save-image-menu-scroll-area';
     scrollArea.className = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
@@ -89,7 +95,11 @@ export class SaveImageController {
     scrollArea.append(this.createDimensionSettings(), settingsContent);
     this.menu.append(this.createHeader(), scrollArea);
     this.resizeHandles = this.createResizeHandles();
-    this.root.append(this.menu, ...this.resizeHandles.values());
+    this.root.append(
+      this.blankSeparator,
+      this.menu,
+      ...this.resizeHandles.values(),
+    );
     container.append(this.root);
     this.syncLayout();
   }
@@ -338,10 +348,30 @@ export class SaveImageController {
     this.menu.dataset.placement = menuPlacement;
     this.menu.classList.toggle('border-l', menuPlacement === 'right');
     this.menu.classList.toggle('border-t', menuPlacement === 'bottom');
+    this.syncBlankSeparator();
     this.syncResizeHandles();
     this.onLayoutChange(this.layout);
     this.onFontScaleChange(this.getPreviewFontScale());
     this.onVisualScaleChange(this.getPreviewVisualScale());
+  }
+
+  private syncBlankSeparator(): void {
+    const blankRect = this.layout.blankRects[0];
+    this.blankSeparator.classList.toggle('hidden', !blankRect);
+    if (!blankRect) return;
+
+    this.blankSeparator.style.left = `${blankRect.x}px`;
+    this.blankSeparator.style.top = `${blankRect.y}px`;
+    this.blankSeparator.style.width = `${blankRect.width}px`;
+    this.blankSeparator.style.height = `${blankRect.height}px`;
+    this.blankSeparator.classList.toggle(
+      'border-t',
+      this.layout.menuPlacement === 'right',
+    );
+    this.blankSeparator.classList.toggle(
+      'border-l',
+      this.layout.menuPlacement === 'bottom',
+    );
   }
 
   private syncResizeHandles(): void {
