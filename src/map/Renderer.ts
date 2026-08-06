@@ -98,6 +98,7 @@ export class MapRenderer {
   private width: number;
   private height: number;
   private saveImageFontScale = 1;
+  private saveImageVisualScale = 1;
 
   private layers: {
     provincesFill: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -244,6 +245,14 @@ export class MapRenderer {
     this.schoolOverlay.setFontScale(this.saveImageFontScale);
     this.schoolOverlay.resetLayout();
     this.updateRegionLabelScale();
+    this.updateSchoolOverlay();
+  }
+
+  public setSaveImageVisualScale(scale: number): void {
+    const nextScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    if (nextScale === this.saveImageVisualScale) return;
+    this.saveImageVisualScale = nextScale;
+    this.schoolOverlay.setVisualScale(this.saveImageVisualScale);
     this.updateSchoolOverlay();
   }
 

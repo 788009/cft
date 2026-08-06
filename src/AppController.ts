@@ -60,6 +60,7 @@ export class AppController {
   private started = false;
   private saveImage: SaveImageController | null = null;
   private saveImageFontScale = 1;
+  private saveImageVisualScale = 1;
 
   constructor() {
     this.mapContainer = this.requireElement('map-container');
@@ -229,6 +230,7 @@ export class AppController {
       renderer.setRegionSelectionEnabled(!this.saveImage);
       renderer.setSaveImageCardDraggingEnabled(Boolean(this.saveImage));
       renderer.setSaveImageFontScale(this.saveImageFontScale);
+      renderer.setSaveImageVisualScale(this.saveImageVisualScale);
       renderer.setData(data);
       renderer.setSearchResult(this.searchResult);
       renderer.setUiObstacles(this.searchObstacles);
@@ -279,6 +281,7 @@ export class AppController {
       onExit: () => this.finishSaveImageMode(),
       onLayoutChange: (layout) => this.applySaveImageLayout(layout),
       onFontScaleChange: (scale) => this.applySaveImageFontScale(scale),
+      onVisualScaleChange: (scale) => this.applySaveImageVisualScale(scale),
       onRearrangeCards: () => this.renderer?.rearrangeCards(),
       onSave: (snapshot) => this.saveMapImage(snapshot),
     });
@@ -290,7 +293,9 @@ export class AppController {
     this.saveImage.destroy();
     this.saveImage = null;
     this.saveImageFontScale = 1;
+    this.saveImageVisualScale = 1;
     this.renderer?.setSaveImageFontScale(1);
+    this.renderer?.setSaveImageVisualScale(1);
     this.renderer?.setRegionSelectionEnabled(true);
     this.renderer?.setSaveImageCardDraggingEnabled(false);
     this.restoreMapViewport();
@@ -316,6 +321,11 @@ export class AppController {
     this.renderer?.setSaveImageFontScale(scale);
   }
 
+  private applySaveImageVisualScale(scale: number): void {
+    this.saveImageVisualScale = scale;
+    this.renderer?.setSaveImageVisualScale(scale);
+  }
+
   private async saveMapImage(snapshot: SaveImageStateSnapshot): Promise<void> {
     const renderer = this.renderer;
     if (!renderer) throw new Error('地图尚未加载完成');
@@ -327,6 +337,7 @@ export class AppController {
       width: snapshot.width,
       height: snapshot.height,
       fontScale: snapshot.fontScale,
+      visualScale: snapshot.fontScale / snapshot.fontScaleMultiplier,
       data,
       mapSnapshot: renderer.getSnapshot(),
       settings: {

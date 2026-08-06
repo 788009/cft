@@ -51,6 +51,7 @@ export interface PngExportRequest {
   width: number;
   height: number;
   fontScale: number;
+  visualScale: number;
   data: ProcessedData;
   mapSnapshot: MapRendererSnapshot;
   settings: PngExportSettings;
@@ -77,6 +78,7 @@ export async function exportMapToPng(request: PngExportRequest): Promise<void> {
   try {
     renderer.setRegionSelectionEnabled(false);
     renderer.setSaveImageFontScale(request.fontScale);
+    renderer.setSaveImageVisualScale(request.visualScale);
     renderer.setData(request.data);
     await renderer.renderBaseMap();
     await renderer.applySnapshot(request.mapSnapshot);

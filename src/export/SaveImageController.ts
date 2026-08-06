@@ -20,6 +20,7 @@ export interface SaveImageControllerOptions {
   onExit: () => void;
   onLayoutChange: (layout: SaveImageModeLayout) => void;
   onFontScaleChange: (scale: number) => void;
+  onVisualScaleChange: (scale: number) => void;
   onRearrangeCards: () => void;
   onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
 }
@@ -29,6 +30,7 @@ export class SaveImageController {
   private readonly onExit: () => void;
   private readonly onLayoutChange: (layout: SaveImageModeLayout) => void;
   private readonly onFontScaleChange: (scale: number) => void;
+  private readonly onVisualScaleChange: (scale: number) => void;
   private readonly onRearrangeCards: () => void;
   private readonly onSave: (snapshot: SaveImageStateSnapshot) => Promise<void>;
   private readonly root: HTMLDivElement;
@@ -52,6 +54,7 @@ export class SaveImageController {
     this.onExit = options.onExit;
     this.onLayoutChange = options.onLayoutChange;
     this.onFontScaleChange = options.onFontScaleChange;
+    this.onVisualScaleChange = options.onVisualScaleChange;
     this.onRearrangeCards = options.onRearrangeCards;
     this.onSave = options.onSave;
     this.layout = this.calculateLayout();
@@ -279,6 +282,7 @@ export class SaveImageController {
     this.syncResizeHandles();
     this.onLayoutChange(this.layout);
     this.onFontScaleChange(this.getPreviewFontScale());
+    this.onVisualScaleChange(this.getPreviewVisualScale());
   }
 
   private syncResizeHandles(): void {
@@ -370,6 +374,13 @@ export class SaveImageController {
       { width: this.layout.mapRect.width, height: this.layout.mapRect.height },
       defaultConfig.export.fontScaleAreaRootRatio,
       snapshot.fontScaleMultiplier,
+    );
+  }
+
+  private getPreviewVisualScale(): number {
+    return calculateAreaFontScale(
+      { width: this.layout.mapRect.width, height: this.layout.mapRect.height },
+      defaultConfig.export.fontScaleAreaRootRatio,
     );
   }
 

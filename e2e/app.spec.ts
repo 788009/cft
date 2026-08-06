@@ -459,9 +459,13 @@ test('enters save image mode with a shared settings menu and restores the main c
   const map = page.getByTestId('map-container');
   const title = map.locator('g.school-label text.school-label-title').first();
   const student = map.locator('g.school-label text.student-name').first();
+  const anchor = map.locator('circle.school-anchor').first();
+  const line = map.locator('line.school-line').first();
   await expect(title).toBeVisible();
   const initialTitleSize = Number(await title.getAttribute('font-size'));
   const initialStudentSize = Number(await student.getAttribute('font-size'));
+  const initialAnchorRadius = Number(await anchor.getAttribute('r'));
+  const initialLineWidth = Number(await line.getAttribute('stroke-width'));
   await page.getByTestId('settings-button').click();
   await page.getByTestId('open-save-image-mode').click();
 
@@ -493,6 +497,25 @@ test('enters save image mode with a shared settings menu and restores the main c
   await expect.poll(async () => Number(
     await map.locator('g.school-label').first().getAttribute('data-label-scale'),
   )).toBeCloseTo(1 / 3, 5);
+  const visualScale = Number(
+    await map.locator('g.school-overlay').getAttribute('data-visual-scale'),
+  );
+  expect(Number(await anchor.getAttribute('r'))).toBeCloseTo(
+    initialAnchorRadius * visualScale,
+    5,
+  );
+  expect(Number(await line.getAttribute('stroke-width'))).toBeCloseTo(
+    initialLineWidth * visualScale,
+    5,
+  );
+  const scaledAnchorRadius = Number(await anchor.getAttribute('r'));
+  const scaledLineWidth = Number(await line.getAttribute('stroke-width'));
+  await page.getByTestId('save-image-font-scale').fill('2');
+  await page.getByTestId('save-image-font-scale').blur();
+  expect(Number(await anchor.getAttribute('r'))).toBeCloseTo(scaledAnchorRadius, 5);
+  expect(Number(await line.getAttribute('stroke-width'))).toBeCloseTo(scaledLineWidth, 5);
+  await page.getByTestId('save-image-font-scale').fill('1');
+  await page.getByTestId('save-image-font-scale').blur();
 
   const mapBox = await map.boundingBox();
   const menuBox = await menu.boundingBox();

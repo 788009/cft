@@ -386,6 +386,7 @@ export class SchoolOverlay {
   private enableLocalLayoutOptimization: boolean;
   private showMiddleSchool: boolean;
   private fontScale = 1;
+  private visualScale = 1;
   private cardDraggingEnabled = false;
   private infoRectangleEditing = false;
   private width = 0;
@@ -430,6 +431,7 @@ export class SchoolOverlay {
       .attr('data-show-middle-school', String(this.showMiddleSchool))
       .attr('data-card-dragging-enabled', 'false')
       .attr('data-manual-card-count', 0)
+      .attr('data-visual-scale', 1)
       .style('pointer-events', 'none');
     this.infoRectangle = this.root.append('rect')
       .attr('class', 'info-rectangle')
@@ -546,6 +548,11 @@ export class SchoolOverlay {
 
   public setFontScale(scale: number): void {
     this.fontScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
+
+  public setVisualScale(scale: number): void {
+    this.visualScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    this.root.attr('data-visual-scale', this.visualScale);
   }
 
   public setCardDraggingEnabled(enabled: boolean): void {
@@ -1348,7 +1355,7 @@ export class SchoolOverlay {
         minWidth: lineStyle.lineMinWidth,
         maxWidth: lineStyle.lineMaxWidth,
         logarithmicStep: lineStyle.lineLogarithmicStep,
-      })
+      }) * this.visualScale
     );
     const setLineGeometry = (
       selection: Selection<SVGLineElement, MiddleSchoolConnection, SVGGElement, unknown>,
@@ -1364,13 +1371,13 @@ export class SchoolOverlay {
       'line.middle-school-connection-glow-outer',
     ).attr(
       'stroke-width',
-      (connection) => lineWidth(connection) + lineStyle.lineOuterGlowSpread,
+      (connection) => lineWidth(connection) + lineStyle.lineOuterGlowSpread * this.visualScale,
     );
     const innerGlow = connectionGroups.select<SVGLineElement>(
       'line.middle-school-connection-glow-inner',
     ).attr(
       'stroke-width',
-      (connection) => lineWidth(connection) + lineStyle.lineInnerGlowSpread,
+      (connection) => lineWidth(connection) + lineStyle.lineInnerGlowSpread * this.visualScale,
     );
     const coreLines = connectionGroups.select<SVGLineElement>('line.middle-school-connection')
       .attr('data-anchor-id', (connection) => connection.id)
@@ -1399,10 +1406,12 @@ export class SchoolOverlay {
       .attr('data-middle-school', (school) => school.name)
       .attr('transform', `translate(${middleSchoolX},${middleSchoolY})`);
     marker.select<SVGCircleElement>('circle.middle-school-marker-halo')
-      .attr('r', lineStyle.haloRadius);
+      .attr('r', lineStyle.haloRadius * this.visualScale)
+      .style('stroke-width', `${2 * this.visualScale}px`);
     marker.select<SVGCircleElement>('circle.middle-school-marker-core')
-      .attr('r', lineStyle.markerRadius);
-    const centerSize = lineStyle.markerRadius * 0.9;
+      .attr('r', lineStyle.markerRadius * this.visualScale)
+      .style('stroke-width', `${2 * this.visualScale}px`);
+    const centerSize = lineStyle.markerRadius * 0.9 * this.visualScale;
     marker.select<SVGRectElement>('rect.middle-school-marker-center')
       .attr('x', -centerSize / 2)
       .attr('y', -centerSize / 2)
@@ -1564,7 +1573,7 @@ export class SchoolOverlay {
       .append('line')
       .attr('class', 'school-line')
       .attr('stroke', '#64748b')
-      .attr('stroke-width', 1)
+      .attr('stroke-width', this.visualScale)
       .attr('opacity', 0)
       .attr('vector-effect', 'non-scaling-stroke')
       .merge(lines)
@@ -1576,6 +1585,7 @@ export class SchoolOverlay {
       .attr('y1', (scene) => scene.anchor.y)
       .attr('x2', (scene) => scene.connection.x)
       .attr('y2', (scene) => scene.connection.y)
+      .attr('stroke-width', this.visualScale)
       .attr('opacity', 0.72);
 
     this.applyLineHighlight();
@@ -1594,14 +1604,17 @@ export class SchoolOverlay {
     anchors.enter()
       .append('circle')
       .attr('class', 'school-anchor')
-      .attr('r', defaultConfig.labelStyle.anchorRadius)
+      .attr('r', defaultConfig.labelStyle.anchorRadius * this.visualScale)
       .attr('fill', '#0f766e')
       .attr('stroke', '#ffffff')
-      .attr('stroke-width', 1.5)
+      .attr('stroke-width', 1.5 * this.visualScale)
       .attr('opacity', 0)
       .merge(anchors)
       .attr('cx', (scene) => scene.anchor.x)
       .attr('cy', (scene) => scene.anchor.y)
+      .attr('r', defaultConfig.labelStyle.anchorRadius * this.visualScale)
+      .attr('stroke-width', 1.5 * this.visualScale)
+      .style('r', `${defaultConfig.labelStyle.anchorRadius * this.visualScale}px`)
       .attr('opacity', 1);
 
     anchors.exit()
@@ -1804,16 +1817,24 @@ export class SchoolOverlay {
     const hoveredSchoolId = this.hoveredSchoolId;
     const hoveredRegion = this.hoveredRegion;
     const touchSelectedSchoolId = this.touchSelectedSchoolId;
+    const isHighlighted = (scene: LabelScene): boolean => {
+      if (hoveredSchoolId) return scene.id === hoveredSchoolId;
+      if (hoveredRegion) {
+        return scene.card.schools.some((school) => (
+          (hoveredRegion.level === 'province' ? school.provinceAdcode : school.cityAdcode)
+            === hoveredRegion.adcode
+        ));
+      }
+      return touchSelectedSchoolId !== null && scene.id === touchSelectedSchoolId;
+    };
+    const isSearchMatch = (scene: LabelScene): boolean => (
+      scene.card.schools.some((school) => this.matchedSchools.has(school))
+    );
     const highlighted = this.linesLayer.selectAll<SVGLineElement, LabelScene>('line.school-line')
-      .classed('is-highlighted', (scene) => {
-        if (hoveredSchoolId) return scene.id === hoveredSchoolId;
-        if (hoveredRegion) {
-          return scene.card.schools.some((school) => (
-            (hoveredRegion.level === 'province' ? school.provinceAdcode : school.cityAdcode)
-              === hoveredRegion.adcode
-          ));
-        }
-        return touchSelectedSchoolId !== null && scene.id === touchSelectedSchoolId;
+      .classed('is-highlighted', isHighlighted)
+      .style('stroke-width', (scene) => {
+        const width = isSearchMatch(scene) ? 2.5 : isHighlighted(scene) ? 3 : 1;
+        return `${width * this.visualScale}px`;
       });
     highlighted.filter('.is-highlighted').raise();
     this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
@@ -1832,7 +1853,11 @@ export class SchoolOverlay {
     this.linesLayer.selectAll<SVGLineElement, LabelScene>('line.school-line')
       .classed('is-search-match', sceneMatchesSchool);
     this.anchorsLayer.selectAll<SVGCircleElement, LabelScene>('circle.school-anchor')
-      .classed('is-search-match', sceneMatchesSchool);
+      .classed('is-search-match', sceneMatchesSchool)
+      .style('r', (scene) => `${(
+        sceneMatchesSchool(scene) ? 5 : defaultConfig.labelStyle.anchorRadius
+      ) * this.visualScale}px`);
+    this.applyLineHighlight();
     const labels = this.labelsLayer.selectAll<SVGGElement, LabelScene>('g.school-label')
       .classed('is-search-match', sceneMatchesSchool);
     labels.select<SVGTextElement>('text.school-label-title')
