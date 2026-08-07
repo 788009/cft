@@ -107,7 +107,7 @@ export class SaveImageController {
     const scrollArea = document.createElement('div');
     scrollArea.dataset.testid = 'save-image-menu-scroll-area';
     scrollArea.className = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
-    const settingsContent = this.settings.createContent(false, false);
+    const settingsContent = this.settings.createContent(false, false, false);
     settingsContent.className = 'divide-y divide-slate-200 dark:divide-slate-700';
     scrollArea.append(
       this.createDimensionSettings(),

@@ -195,6 +195,7 @@ export class SettingsController {
   public createContent(
     includeSaveImageEntry = false,
     includeMessage = true,
+    includeCache = true,
   ): HTMLDivElement {
     const content = document.createElement('div');
     content.className = 'divide-y divide-slate-200 dark:divide-slate-700';
@@ -228,7 +229,7 @@ export class SettingsController {
         ),
         this.createLayoutOptimizationSetting(),
       ]),
-      this.createSection('缓存', [this.createCacheSettings()]),
+      ...(includeCache ? [this.createSection('缓存', [this.createCacheSettings()])] : []),
       ...(includeMessage ? [this.createGuideSection()] : []),
       ...(includeMessage ? [this.createMessageSection()] : []),
     );
