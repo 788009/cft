@@ -17,6 +17,7 @@ function listDataFiles(directory: string): string[] {
 function contentTypeFor(filePath: string): string {
   if (filePath.endsWith('.json')) return 'application/json; charset=utf-8';
   if (filePath.endsWith('.csv')) return 'text/csv; charset=utf-8';
+  if (filePath.endsWith('.svg')) return 'image/svg+xml; charset=utf-8';
   return 'application/octet-stream';
 }
 
