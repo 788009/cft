@@ -173,6 +173,18 @@ async function exportSceneToPng(
       request.signal,
     );
     await addAddedImages(svg, request.addedImages, request.signal);
+
+    const strokeFixStyle = document.createElementNS(SVG_NAMESPACE, 'style');
+    strokeFixStyle.textContent = `
+      .middle-school-card-background {
+        stroke-width: ${2 * request.visualScale}px !important;
+      }
+      .middle-school-card-line {
+        stroke-width: ${1.5 * request.visualScale}px !important;
+      }
+    `;
+    svg.appendChild(strokeFixStyle);
+
     reportProgress(0.68);
     await inlineSvgImages(svg, request.signal);
     reportProgress(0.78);
