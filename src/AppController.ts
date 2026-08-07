@@ -215,6 +215,7 @@ export class AppController {
     this.started = true;
     window.addEventListener('resize', this.handleResize);
     this.applyViewport();
+    this.settings.showGuideOnFirstVisit();
   }
 
   public destroy(): void {

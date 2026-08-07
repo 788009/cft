@@ -1,6 +1,29 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { centerDomesticSchools, zoomMapToScale } from './helpers';
 
+const FIRST_VISIT_GUIDE_TEST = 'shows the guide on first visit and reopens it from settings';
+
+test.beforeEach(async ({ page }, testInfo) => {
+  if (testInfo.title === FIRST_VISIT_GUIDE_TEST) return;
+  await page.addInitScript(() => localStorage.setItem('cft.guide.version', '1'));
+});
+
+test(FIRST_VISIT_GUIDE_TEST, async ({ page }) => {
+  await page.goto('/');
+
+  const guide = page.getByTestId('guide-dialog');
+  await expect(guide).toBeVisible();
+  await expect(page.getByTestId('guide-content')).toContainText('查看地图');
+  await expect(page.getByTestId('guide-content').locator('details')).toHaveCount(1);
+  await page.getByTestId('close-guide-dialog').click();
+
+  await page.reload();
+  await expect(guide).toHaveCount(0);
+  await page.getByTestId('settings-button').click();
+  await page.getByTestId('open-guide').click();
+  await expect(guide).toBeVisible();
+});
+
 test('switches default range geometry at the wide and narrow screen boundary', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 600 });
   await page.goto('/');
@@ -1156,7 +1179,7 @@ test('uploads one background for both themes and restores configured backgrounds
   expect(await map.evaluate((element) => element.style.backgroundImage))
     .toBe(configuredLightBackground);
 
-  await input.setInputFiles('data/message.html');
+  await input.setInputFiles('data/message.md');
   await expect(page.getByTestId('background-image-error'))
     .toHaveText('仅支持 PNG、JPEG 和 WebP 图片');
   expect(await map.evaluate((element) => element.style.backgroundImage))

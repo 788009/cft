@@ -86,6 +86,7 @@ export interface AppConfig {
   cardGroupingMode: CardGroupingMode;
   themeMode: ThemeMode;
   cacheEnabledByDefault: boolean;
+  guideVersion: number;
   backgroundImages: {
     light: string | null;
     dark: string | null;
@@ -212,6 +213,7 @@ export const defaultConfig: AppConfig = {
   cardGroupingMode: 'region',
   themeMode: 'system',
   cacheEnabledByDefault: true,
+  guideVersion: 1,
   backgroundImages: {
     light: null,
     dark: null,

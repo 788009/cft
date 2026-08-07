@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('cft.guide.version', '1'));
+});
 import { centerDomesticSchools } from './helpers';
 
 test('renders the initial landscape map consistently', async ({ page }) => {

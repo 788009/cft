@@ -9,8 +9,8 @@ import {
   type ThemeMode,
 } from '@/config';
 import { ModalShell } from '@/details/ModalShell';
-import { loadMessageHtml } from '@/data/fetcher';
-import { createSafeMessageContent } from './message';
+import { loadGuideMarkdown, loadMessageMarkdown } from '@/data/fetcher';
+import { createSafeMarkdownContent } from './message';
 import { isSupportedBackgroundImage } from '@/theme/BackgroundController';
 import {
   SettingsStateStore,
@@ -63,6 +63,8 @@ const CORNER_CLASSES: Record<Corner, string> = {
   'bottom-right': 'bottom-3 right-3',
 };
 
+const GUIDE_VERSION_KEY = 'cft.guide.version';
+
 export class SettingsController {
   private readonly container: HTMLElement;
   private readonly stateStore: SettingsStateStore;
@@ -90,7 +92,9 @@ export class SettingsController {
   private showMiddleSchool: boolean;
   private enableLocalLayoutOptimization: boolean;
   private shell: ModalShell | null = null;
-  private messageHtmlPromise: Promise<string> | null = null;
+  private guideShell: ModalShell | null = null;
+  private messageMarkdownPromise: Promise<string> | null = null;
+  private guideMarkdownPromise: Promise<string> | null = null;
   private backgroundFileName: string | null = null;
   private cacheEnabled: boolean;
   private cacheOperationPending = false;
@@ -155,6 +159,11 @@ export class SettingsController {
     this.shell = null;
   }
 
+  public showGuideOnFirstVisit(): void {
+    if (this.hasSeenCurrentGuide()) return;
+    this.openGuide();
+  }
+
   public setButtonVisible(visible: boolean): void {
     this.button.classList.toggle('hidden', !visible);
     this.button.setAttribute('aria-hidden', String(!visible));
@@ -162,12 +171,14 @@ export class SettingsController {
 
   public destroy(): void {
     this.close();
+    this.closeGuide();
     this.unsubscribeState();
     this.button.removeEventListener('click', this.open);
     this.button.remove();
   }
 
   private readonly open = (): void => {
+    this.closeGuide();
     this.close();
     this.shell = new ModalShell(this.container, {
       testId: 'settings-dialog',
@@ -218,6 +229,7 @@ export class SettingsController {
         this.createLayoutOptimizationSetting(),
       ]),
       this.createSection('缓存', [this.createCacheSettings()]),
+      ...(includeMessage ? [this.createGuideSection()] : []),
       ...(includeMessage ? [this.createMessageSection()] : []),
     );
     this.updateChoices(content);
@@ -246,10 +258,28 @@ export class SettingsController {
   private createMessageSection(): HTMLElement {
     const section = document.createElement('section');
     section.dataset.testid = 'settings-message';
-    section.className = 'settings-message px-5 py-4 sm:px-6';
+    section.className = 'markdown-content settings-message px-5 py-4 sm:px-6';
     section.setAttribute('aria-busy', 'true');
     void this.loadMessage(section);
     return section;
+  }
+
+  private createGuideSection(): HTMLElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.testid = 'open-guide';
+    button.className = [
+      'min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-medium',
+      'text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+      'dark:focus-visible:outline-teal-400',
+    ].join(' ');
+    button.textContent = '打开使用说明';
+    button.addEventListener('click', () => {
+      this.close();
+      this.openGuide();
+    });
+    return this.createSection('使用说明', [button]);
   }
 
   private createBackgroundSetting(): HTMLElement {
@@ -347,17 +377,75 @@ export class SettingsController {
 
   private async loadMessage(section: HTMLElement): Promise<void> {
     try {
-      this.messageHtmlPromise ??= loadMessageHtml();
-      const html = await this.messageHtmlPromise;
-      section.replaceChildren(createSafeMessageContent(html));
+      this.messageMarkdownPromise ??= loadMessageMarkdown();
+      const markdown = await this.messageMarkdownPromise;
+      section.replaceChildren(createSafeMarkdownContent(markdown));
       section.setAttribute('aria-busy', 'false');
     } catch {
-      this.messageHtmlPromise = null;
+      this.messageMarkdownPromise = null;
       const error = document.createElement('p');
       error.className = 'text-sm text-red-700 dark:text-red-400';
       error.textContent = '内容加载失败';
       section.replaceChildren(error);
       section.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  private openGuide(): void {
+    this.closeGuide();
+    this.guideShell = new ModalShell(this.container, {
+      testId: 'guide-dialog',
+      title: '使用说明',
+      closeLabel: '关闭使用说明',
+      panelClass: 'relative flex max-h-[90vh] w-[min(94vw,760px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900',
+      bodyClass: 'overflow-auto bg-white dark:bg-slate-900',
+      onClose: () => this.closeGuide(),
+    });
+    const content = document.createElement('article');
+    content.dataset.testid = 'guide-content';
+    content.className = 'markdown-content px-5 py-5 sm:px-7 sm:py-6';
+    content.setAttribute('aria-busy', 'true');
+    this.guideShell.body.append(content);
+    void this.loadGuide(content);
+  }
+
+  private closeGuide(): void {
+    this.guideShell?.destroy();
+    this.guideShell = null;
+  }
+
+  private async loadGuide(content: HTMLElement): Promise<void> {
+    try {
+      this.guideMarkdownPromise ??= loadGuideMarkdown();
+      const markdown = await this.guideMarkdownPromise;
+      if (!content.isConnected) return;
+      content.replaceChildren(createSafeMarkdownContent(markdown));
+      content.setAttribute('aria-busy', 'false');
+      this.markGuideSeen();
+    } catch {
+      this.guideMarkdownPromise = null;
+      if (!content.isConnected) return;
+      const error = document.createElement('p');
+      error.className = 'text-sm text-red-700 dark:text-red-400';
+      error.textContent = '使用说明加载失败';
+      content.replaceChildren(error);
+      content.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  private hasSeenCurrentGuide(): boolean {
+    try {
+      return localStorage.getItem(GUIDE_VERSION_KEY) === String(defaultConfig.guideVersion);
+    } catch {
+      return false;
+    }
+  }
+
+  private markGuideSeen(): void {
+    try {
+      localStorage.setItem(GUIDE_VERSION_KEY, String(defaultConfig.guideVersion));
+    } catch {
+      // localStorage 不可用时，下次访问会重新显示说明。
     }
   }
 

@@ -22,8 +22,13 @@ export function getDataAssetUrl(relativePath: string): string {
   return `${defaultConfig.dataBasePath}/${encodedPath}`;
 }
 
-export async function loadMessageHtml(): Promise<string> {
-  const response = await fetchRequired(getDataAssetUrl('message.html'));
+export async function loadMessageMarkdown(): Promise<string> {
+  const response = await fetchRequired(getDataAssetUrl('message.md'));
+  return response.text();
+}
+
+export async function loadGuideMarkdown(): Promise<string> {
+  const response = await fetchRequired(getDataAssetUrl('guide.md'));
   return response.text();
 }
 

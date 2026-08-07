@@ -39,42 +39,111 @@
   fill: #334155;
 }
 
-.settings-message {
+.markdown-content {
   color: #475569;
   font-size: 0.875rem;
   line-height: 1.5rem;
 }
 
-.settings-message h3,
-.settings-message h4 {
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
   color: #0f172a;
   font-size: 0.875rem;
   font-weight: 600;
 }
 
-.settings-message p,
-.settings-message ul,
-.settings-message ol {
-  margin-top: 0.5rem;
+.markdown-content h1 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
 }
 
-.settings-message ul {
+.markdown-content h2 {
+  font-size: 1.0625rem;
+  line-height: 1.5rem;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content blockquote,
+.markdown-content pre,
+.markdown-content table,
+.markdown-content details {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content ul {
   list-style: disc;
   padding-left: 1.25rem;
 }
 
-.settings-message ol {
+.markdown-content ol {
   list-style: decimal;
   padding-left: 1.25rem;
 }
 
-.settings-message a {
+.markdown-content blockquote {
+  border-left: 3px solid #cbd5e1;
+  padding-left: 0.75rem;
+}
+
+.markdown-content pre {
+  overflow-x: auto;
+  border-radius: 0.375rem;
+  background: #f1f5f9;
+  padding: 0.75rem;
+}
+
+.markdown-content code {
+  border-radius: 0.25rem;
+  background: #f1f5f9;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #cbd5e1;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+
+.markdown-content summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-content a {
   color: #0f766e;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.settings-message a:focus-visible {
+.markdown-content a:focus-visible {
   border-radius: 2px;
   outline: 2px solid #0f766e;
   outline-offset: 2px;
@@ -421,20 +490,38 @@ text.is-search-match {
   fill: #cbd5e1;
 }
 
-.dark .settings-message {
+.dark .markdown-content {
   color: #cbd5e1;
 }
 
-.dark .settings-message h3,
-.dark .settings-message h4 {
+.dark .markdown-content h1,
+.dark .markdown-content h2,
+.dark .markdown-content h3,
+.dark .markdown-content h4,
+.dark .markdown-content h5,
+.dark .markdown-content h6 {
   color: #f8fafc;
 }
 
-.dark .settings-message a {
+.dark .markdown-content blockquote {
+  border-color: #475569;
+}
+
+.dark .markdown-content pre,
+.dark .markdown-content code {
+  background: #1e293b;
+}
+
+.dark .markdown-content th,
+.dark .markdown-content td {
+  border-color: #475569;
+}
+
+.dark .markdown-content a {
   color: #5eead4;
 }
 
-.dark .settings-message a:focus-visible {
+.dark .markdown-content a:focus-visible {
   outline-color: #5eead4;
 }
 
