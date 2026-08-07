@@ -36,6 +36,7 @@ import type {
 import type { RegionSelection } from '@/details/types';
 import { RegionSaveImageScene } from '@/export/RegionSaveImageScene';
 import { AppCache } from '@/cache/AppCache';
+import { updateFavicon } from '@/utils/favicon';
 
 export function createDefaultAppSettings(
   width: number,
@@ -125,7 +126,10 @@ export class AppController {
     this.background.setUploadedFile(initialSettings.backgroundFile);
     this.theme = new ThemeController(
       initialSettings.themeMode,
-      (resolvedTheme) => this.background.setTheme(resolvedTheme),
+      (resolvedTheme) => {
+        this.background.setTheme(resolvedTheme),
+        updateFavicon(resolvedTheme);
+      }
     );
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
     this.search = new SearchController(

@@ -6,6 +6,10 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export interface AppConfig {
   pageTitle: string;
   dataBasePath: string;
+  favicon : {
+    light?: string | null;
+    dark?: string | null;
+  };
   infoRectangleWidthRatio: number;
   infoRectangleHeightRatio: number;
   infoRectangleNarrowModeMinHeightWidthRatio: number;
@@ -132,6 +136,10 @@ export function resolveDataBasePath(baseUrl: string): string {
 
 export const defaultConfig: AppConfig = {
   pageTitle: '双十中学 23 级高一 15 班蹭饭图',
+  favicon: {
+    light: '/favicon.svg',
+    dark: 'favicon_dark.svg'
+  },
   dataBasePath: resolveDataBasePath(import.meta.env.BASE_URL),
   infoRectangleWidthRatio: 0.5,
   infoRectangleHeightRatio: 0.5,
