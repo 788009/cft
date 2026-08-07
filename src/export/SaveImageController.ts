@@ -64,6 +64,7 @@ export class SaveImageController {
   private editOverlay: HTMLDivElement;
   private imagesListContainer!: HTMLDivElement;
   private editingImageIds = new Set<string>();
+  private imageBaseWidths = new Map<string, number>();
   private imageElements = new Map<string, HTMLImageElement>();
 
   constructor(
@@ -538,6 +539,13 @@ export class SaveImageController {
     this.imagesListContainer.innerHTML = '';
     const images = this.state.getSnapshot().addedImages;
     for (const img of images) {
+      // 如果是新图片，记录其初始宽度作为 1.0 倍率基准
+      if (!this.imageBaseWidths.has(img.id)) {
+        this.imageBaseWidths.set(img.id, img.rect.width);
+      }
+      const baseWidth = this.imageBaseWidths.get(img.id)!;
+      const currentScale = img.rect.width / baseWidth;
+
       const row = document.createElement('div');
       row.className = 'flex items-center justify-between gap-2 p-2 rounded-md bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700';
 
@@ -545,8 +553,47 @@ export class SaveImageController {
       title.className = 'text-sm text-slate-700 dark:text-slate-300 truncate flex-1';
       title.textContent = img.title;
 
+      // 缩放倍率输入框
+      const scaleInput = document.createElement('input');
+      scaleInput.type = 'number';
+      scaleInput.step = '0.1';
+      scaleInput.min = (1 / baseWidth).toFixed(4); // 确保下限至少为 1px 对应的倍率
+      scaleInput.value = currentScale.toFixed(2);
+      scaleInput.dataset.imageId = img.id; // 绑定 ID 以便双向同步
+      scaleInput.className = 'w-16 px-1 py-0.5 text-sm text-center border rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:border-teal-500 shrink-0';
+      scaleInput.title = '调整缩放倍率';
+
+      // 监听输入框变化，应用缩放
+      scaleInput.addEventListener('change', () => {
+        let newScale = parseFloat(scaleInput.value);
+        const minScale = 1 / baseWidth; // 下限约束
+        if (isNaN(newScale) || newScale < minScale) {
+          newScale = minScale;
+          scaleInput.value = newScale.toFixed(2);
+        }
+        
+        const currentImg = this.state.getSnapshot().addedImages.find(i => i.id === img.id);
+        if (!currentImg) return;
+        
+        // 计算新的尺寸
+        const actualScale = newScale / (currentImg.rect.width / baseWidth);
+        const newWidth = currentImg.rect.width * actualScale;
+        const newHeight = currentImg.rect.height * actualScale;
+        
+        // 以中心点为原点进行缩放
+        const newRect = {
+          x: currentImg.rect.x - (newWidth - currentImg.rect.width) / 2,
+          y: currentImg.rect.y - (newHeight - currentImg.rect.height) / 2,
+          width: newWidth,
+          height: newHeight,
+        };
+        
+        this.state.updateImageRect(img.id, newRect);
+        this.syncAddedImagesDOM();
+      });
+
       const editBtn = document.createElement('button');
-      editBtn.className = 'text-sm text-teal-600 dark:text-teal-400 font-medium px-2';
+      editBtn.className = 'text-sm text-teal-600 dark:text-teal-400 font-medium px-2 shrink-0';
       editBtn.textContent = this.editingImageIds.has(img.id) ? '完成' : '编辑';
       editBtn.addEventListener('click', () => {
         if (this.editingImageIds.has(img.id)) {
@@ -566,7 +613,7 @@ export class SaveImageController {
       });
 
       const delBtn = document.createElement('button');
-      delBtn.className = 'text-sm text-red-600 dark:text-red-400 font-medium px-2';
+      delBtn.className = 'text-sm text-red-600 dark:text-red-400 font-medium px-2 shrink-0';
       delBtn.textContent = '删除';
       delBtn.addEventListener('click', () => {
         if (this.editingImageIds.has(img.id)) {
@@ -581,7 +628,8 @@ export class SaveImageController {
         this.applyObstaclesAndReflow();
       });
 
-      row.append(title, editBtn, delBtn);
+      // 将输入框插入到“完成/编辑”按钮的左侧
+      row.append(title, scaleInput, editBtn, delBtn);
       this.imagesListContainer.append(row);
     }
   }
@@ -589,12 +637,15 @@ export class SaveImageController {
   private syncAddedImagesDOM(): void {
     const images = this.state.getSnapshot().addedImages;
     const currentIds = new Set(images.map((i) => i.id));
+    
     for (const [id, el] of this.imageElements) {
       if (!currentIds.has(id)) {
         el.remove();
         this.imageElements.delete(id);
+        this.imageBaseWidths.delete(id); // 图片删除时清理基准缓存
       }
     }
+    
     for (const img of images) {
       let el = this.imageElements.get(img.id);
       if (!el) {
@@ -608,9 +659,21 @@ export class SaveImageController {
       el.style.top = `${img.rect.y}px`;
       el.style.width = `${img.rect.width}px`;
       el.style.height = `${img.rect.height}px`;
-      // 如果处于编辑模式且当前图片未被选中，则使其半透明
       el.style.opacity = this.editingImageIds.size > 0 && !this.editingImageIds.has(img.id) ? '0.5' : '1';
     }
+
+    // 将滚轮/双指缩放的结果实时反向同步给输入框（如果此时用户没在聚焦输入）
+    const inputs = this.imagesListContainer.querySelectorAll<HTMLInputElement>('input[data-image-id]');
+    inputs.forEach(input => {
+      const id = input.dataset.imageId;
+      const img = images.find(i => i.id === id);
+      if (img && id && this.imageBaseWidths.has(id)) {
+        if (document.activeElement !== input) {
+          const baseWidth = this.imageBaseWidths.get(id)!;
+          input.value = (img.rect.width / baseWidth).toFixed(2);
+        }
+      }
+    });
   }
 
   private applyObstaclesAndReflow(): void {
