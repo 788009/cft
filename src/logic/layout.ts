@@ -1,3 +1,13 @@
+let dynamicExtraObstacles: Rect[] = [];
+
+export function setDynamicExtraObstacles(obstacles: Rect[]): void {
+  dynamicExtraObstacles = obstacles;
+}
+
+function getEffectiveObstacles(config: LayoutConfig): Rect[] {
+  return [...config.obstacles, ...dynamicExtraObstacles];
+}
+
 export interface Point {
   x: number;
   y: number;
@@ -386,7 +396,7 @@ function violatesHardConstraints(rect: Rect, placedRects: Rect[], config: Layout
     !isInside(rect, config.canvasRect) ||
     isOverlap(rect, config.infoRect, 0) ||
     placedRects.some((placed) => isOverlap(rect, placed, config.spacing)) ||
-    config.obstacles.some((obstacle) => isOverlap(rect, obstacle, config.spacing))
+    getEffectiveObstacles(config).some((obstacle) => isOverlap(rect, obstacle, config.spacing))
   );
 }
 
@@ -400,7 +410,7 @@ function hardConstraintCost(rect: Rect, placedRects: Rect[], config: LayoutConfi
     if (placedRects.some((placed) => isOverlap(rect, placed, config.spacing))) {
       cost += config.weights.overlap;
     }
-    if (config.obstacles.some((obstacle) => isOverlap(rect, obstacle, config.spacing))) {
+    if (getEffectiveObstacles(config).some((obstacle) => isOverlap(rect, obstacle, config.spacing))) {
       cost += config.weights.overlap;
     }
   }
@@ -434,7 +444,7 @@ function softCost(
   const connection = getBestConnectionPoint(
     item.anchor,
     rect,
-    config.weights.lineOcclusion === 0 ? [] : [...placedRects, ...config.obstacles],
+    config.weights.lineOcclusion === 0 ? [] : [...placedRects, ...getEffectiveObstacles(config)],
     config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0 ? [] : lines,
     config.weights,
     config.infoRect,
@@ -485,7 +495,7 @@ function softCost(
     cost += intersections * config.weights.lineIntersection;
   }
   if (config.weights.lineOcclusion !== 0) {
-    const lineOcclusions = [...placedRects, ...config.obstacles].filter((obstacle) => (
+    const lineOcclusions = [...placedRects, ...getEffectiveObstacles(config)].filter((obstacle) => (
       doesSegmentIntersectRectInterior(item.anchor, connection, obstacle)
     )).length;
     const coveredLines = lines.filter((line) => (
@@ -572,7 +582,7 @@ export function calculateLayout(
         bestRect,
         config.weights.lineOcclusion === 0
           ? []
-          : [...placedRects.slice(0, -1), ...config.obstacles],
+          : [...placedRects.slice(0, -1), ...getEffectiveObstacles(config)],
         config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0 ? [] : lines,
         config.weights,
         config.infoRect,
@@ -627,7 +637,7 @@ function countHardViolations(
     if (!rect) return [];
     if (!isInside(rect, config.canvasRect)) violations += 1;
     if (isOverlap(rect, config.infoRect, 0)) violations += 1;
-    violations += config.obstacles.filter((obstacle) => (
+    violations += getEffectiveObstacles(config).filter((obstacle) => (
       isOverlap(rect, obstacle, config.spacing)
     )).length;
     return [{ id: item.id, rect }];
@@ -680,7 +690,7 @@ function reselectConnections(
             const otherRect = layout.get(other.id);
             return otherRect ? [otherRect] : [];
           }),
-          ...config.obstacles,
+          ...getEffectiveObstacles(config),
         ];
       const lines = config.weights.lineIntersection === 0 && config.weights.lineCrowding === 0
         ? []
@@ -754,7 +764,7 @@ export function evaluateLayout(
         diagnostics.get(line.id)!.relatedIds.add(other.id);
         diagnostics.get(other.id)!.relatedIds.add(line.id);
       }
-      score.lineOcclusions += config.obstacles.filter((obstacle) => (
+      score.lineOcclusions += getEffectiveObstacles(config).filter((obstacle) => (
         doesSegmentIntersectRectInterior(line.start, line.end, obstacle)
       )).length;
     }

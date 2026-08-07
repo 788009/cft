@@ -18,6 +18,8 @@ import {
   getExportDimensionWarnings,
   validateExportDimensions,
 } from './validation';
+import { setDynamicExtraObstacles } from '@/logic/layout';
+import type { Rect } from '@/logic/layout';
 
 export interface SaveImageControllerOptions {
   onExit: () => void;
@@ -58,6 +60,12 @@ export class SaveImageController {
   private saveStatus!: HTMLParagraphElement;
   private generationAbortController: AbortController | null = null;
 
+  private imagesContainer: HTMLDivElement;
+  private editOverlay: HTMLDivElement;
+  private imagesListContainer!: HTMLDivElement;
+  private editingImageId: string | null = null;
+  private imageElements = new Map<string, HTMLImageElement>();
+
   constructor(
     container: HTMLElement,
     settings: SettingsController,
@@ -76,6 +84,14 @@ export class SaveImageController {
     this.root.dataset.testid = 'save-image-mode';
     this.root.className = 'pointer-events-none absolute inset-0 z-30';
 
+    this.imagesContainer = document.createElement('div');
+    this.imagesContainer.className = 'absolute pointer-events-none overflow-hidden';
+
+    this.editOverlay = document.createElement('div');
+    this.editOverlay.className = 'absolute hidden touch-none z-40 pointer-events-auto';
+    this.editOverlay.style.cursor = 'move';
+    this.setupEditOverlay();
+
     this.menu = document.createElement('aside');
     this.menu.dataset.testid = 'save-image-menu';
     this.menu.className = [
@@ -92,10 +108,16 @@ export class SaveImageController {
     scrollArea.className = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
     const settingsContent = this.settings.createContent(false, false);
     settingsContent.className = 'divide-y divide-slate-200 dark:divide-slate-700';
-    scrollArea.append(this.createDimensionSettings(), settingsContent);
+    scrollArea.append(
+      this.createDimensionSettings(),
+      this.createImagesSection(),
+      settingsContent,
+    );
     this.menu.append(this.createHeader(), scrollArea);
     this.resizeHandles = this.createResizeHandles();
     this.root.append(
+      this.imagesContainer,
+      this.editOverlay,
       this.blankSeparator,
       this.menu,
       ...this.resizeHandles.values(),
@@ -127,7 +149,143 @@ export class SaveImageController {
   public destroy(): void {
     this.endMapResize?.();
     this.generationAbortController?.abort();
+    setDynamicExtraObstacles([]);
     this.root.remove();
+  }
+
+  private setupEditOverlay(): void {
+    const activePointers = new Map<number, PointerEvent>();
+    let initialRect: Rect | null = null;
+    
+    // 用于单指/鼠标平移
+    let startX = 0;
+    let startY = 0;
+
+    // 用于双指缩放与平移
+    let initialDistance = 0;
+    let initialMidX = 0;
+    let initialMidY = 0;
+
+    this.editOverlay.addEventListener('pointerdown', (e) => {
+      if (!this.editingImageId) return;
+      activePointers.set(e.pointerId, e);
+      this.editOverlay.setPointerCapture(e.pointerId);
+
+      const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
+      if (!img) return;
+      initialRect = { ...img.rect };
+
+      if (activePointers.size === 1) {
+        startX = e.clientX;
+        startY = e.clientY;
+      } else if (activePointers.size === 2) {
+        const pts = Array.from(activePointers.values());
+        initialDistance = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
+        initialMidX = (pts[0].clientX + pts[1].clientX) / 2;
+        initialMidY = (pts[0].clientY + pts[1].clientY) / 2;
+      }
+    });
+
+    this.editOverlay.addEventListener('pointermove', (e) => {
+      if (!this.editingImageId || !initialRect || !activePointers.has(e.pointerId)) return;
+      activePointers.set(e.pointerId, e);
+
+      if (activePointers.size === 1) {
+        // 单指拖拽平移
+        const pts = Array.from(activePointers.values());
+        const dx = pts[0].clientX - startX;
+        const dy = pts[0].clientY - startY;
+        const newRect = { ...initialRect, x: initialRect.x + dx, y: initialRect.y + dy };
+        this.state.updateImageRect(this.editingImageId, newRect);
+        this.syncAddedImagesDOM();
+      } else if (activePointers.size === 2) {
+        // 双指缩放及平移
+        const pts = Array.from(activePointers.values());
+        const currentDistance = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
+        const currentMidX = (pts[0].clientX + pts[1].clientX) / 2;
+        const currentMidY = (pts[0].clientY + pts[1].clientY) / 2;
+
+        if (initialDistance < 5) return; // 防止除零或轻微抖动
+
+        let actualScale = currentDistance / initialDistance;
+        
+        // 统一缩放比例约束，保留 1px 下限以防止长宽等于 0 导致报错
+        if (initialRect.width * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.width);
+        if (initialRect.height * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.height);
+
+        const newWidth = initialRect.width * actualScale;
+        const newHeight = initialRect.height * actualScale;
+
+        // 获取编辑层的屏幕坐标，以将鼠标/触摸中心点转换为图片的本地坐标
+        const overlayRect = this.editOverlay.getBoundingClientRect();
+        const localMidX = initialMidX - overlayRect.left;
+        const localMidY = initialMidY - overlayRect.top;
+        
+        // 中心点位移
+        const dx = currentMidX - initialMidX;
+        const dy = currentMidY - initialMidY;
+
+        // 根据原中心点为缩放原点进行缩放计算，并叠加双指平移距离
+        const newRect = {
+          x: localMidX - (localMidX - initialRect.x) * actualScale + dx,
+          y: localMidY - (localMidY - initialRect.y) * actualScale + dy,
+          width: newWidth,
+          height: newHeight,
+        };
+        this.state.updateImageRect(this.editingImageId, newRect);
+        this.syncAddedImagesDOM();
+      }
+    });
+
+    const endDrag = (e: PointerEvent) => {
+      activePointers.delete(e.pointerId);
+      
+      // 如果从双指变为单指，需要重置单指拖拽的起始坐标，避免图片突然跳动
+      if (activePointers.size === 1 && this.editingImageId) {
+        const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
+        if (img) {
+          initialRect = { ...img.rect };
+          const remainingPointer = Array.from(activePointers.values())[0];
+          startX = remainingPointer.clientX;
+          startY = remainingPointer.clientY;
+        }
+      } else if (activePointers.size === 0) {
+        initialRect = null;
+      }
+    };
+
+    this.editOverlay.addEventListener('pointerup', endDrag);
+    this.editOverlay.addEventListener('pointercancel', endDrag);
+
+    // 修复鼠标滚轮导致的变形问题
+    this.editOverlay.addEventListener('wheel', (e) => {
+      if (!this.editingImageId) return;
+      e.preventDefault();
+      const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
+      if (!img) return;
+      
+      const scale = e.deltaY > 0 ? 0.9 : 1.1;
+      const rect = img.rect;
+      const rectX = e.offsetX;
+      const rectY = e.offsetY;
+
+      // 统一缩放比例约束，保留 1px 下限以防止长宽等于 0 导致报错
+      let actualScale = scale;
+      if (rect.width * scale < 1) actualScale = Math.max(actualScale, 1 / rect.width);
+      if (rect.height * scale < 1) actualScale = Math.max(actualScale, 1 / rect.height);
+
+      const newWidth = rect.width * actualScale;
+      const newHeight = rect.height * actualScale;
+
+      const newRect = {
+        x: rectX - (rectX - rect.x) * actualScale,
+        y: rectY - (rectY - rect.y) * actualScale,
+        width: newWidth,
+        height: newHeight,
+      };
+      this.state.updateImageRect(this.editingImageId, newRect);
+      this.syncAddedImagesDOM();
+    }, { passive: false });
   }
 
   private createHeader(): HTMLElement {
@@ -216,8 +374,26 @@ export class SaveImageController {
       this.generationAbortController = abortController;
       let outcome: 'success' | 'cancelled' | 'failed' = 'success';
       try {
+        // 在导出前，将图片的 UI 像素坐标放大到 Export 图片像素坐标
+        const snapshot = this.state.getSnapshot();
+        const scaleX = snapshot.width / this.layout.mapRect.width;
+        const scaleY = snapshot.height / this.layout.mapRect.height;
+        
+        const scaledSnapshot = {
+          ...snapshot,
+          addedImages: snapshot.addedImages.map(img => ({
+            ...img,
+            rect: {
+              x: img.rect.x * scaleX,
+              y: img.rect.y * scaleY,
+              width: img.rect.width * scaleX,
+              height: img.rect.height * scaleY,
+            }
+          }))
+        };
+
         await this.onSave(
-          this.state.getSnapshot(),
+          scaledSnapshot,
           (progress) => this.setSaveProgress(progress),
           abortController.signal,
         );
@@ -251,7 +427,11 @@ export class SaveImageController {
     rearrange.dataset.testid = 'save-image-rearrange-cards';
     rearrange.className = 'min-h-11 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus-visible:outline-teal-400';
     rearrange.textContent = '重排';
-    rearrange.addEventListener('click', this.onRearrangeCards);
+    rearrange.addEventListener('click', () => {
+      // 在手动重排前，先同步一次最新的图片约束区域
+      this.applyObstaclesAndReflow();
+      this.onRearrangeCards();
+    });
     section.append(
       heading,
       fields,
@@ -278,6 +458,155 @@ export class SaveImageController {
       this.onFontScaleChange(this.getPreviewFontScale());
     });
     return section;
+  }
+
+  private createImagesSection(): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'grid gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-700';
+    const heading = document.createElement('h3');
+    heading.className = 'text-sm font-semibold text-slate-900 dark:text-slate-100';
+    heading.textContent = '添加图片';
+
+    const buttonsRow = document.createElement('div');
+    buttonsRow.className = 'flex gap-2 flex-wrap';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.className = 'rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800';
+    uploadBtn.textContent = '上传';
+    uploadBtn.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.addEventListener('change', (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          this.addLoadedImage(url, file.name);
+        }
+      });
+      input.click();
+    });
+    buttonsRow.append(uploadBtn);
+
+    for (const preset of defaultConfig.export.presetImages) {
+      const preBtn = document.createElement('button');
+      preBtn.className = 'rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800';
+      preBtn.textContent = preset.title;
+      preBtn.addEventListener('click', () => this.addLoadedImage(preset.url, preset.title));
+      buttonsRow.append(preBtn);
+    }
+
+    this.imagesListContainer = document.createElement('div');
+    this.imagesListContainer.className = 'grid gap-2';
+
+    section.append(heading, buttonsRow, this.imagesListContainer);
+    return section;
+  }
+
+  private addLoadedImage(url: string, title: string): void {
+    const img = new Image();
+    img.onload = () => {
+      let { naturalWidth: w, naturalHeight: h } = img;
+      if (w === 0 || h === 0) { w = 150; h = 150; }
+      
+      // 保持长宽比，最大边长为 150
+      const scale = Math.min(150 / w, 150 / h);
+      const width = w * scale;
+      const height = h * scale;
+      
+      const x = (this.layout.mapRect.width - width) / 2;
+      const y = (this.layout.mapRect.height - height) / 2;
+      
+      // 添加图片并获取最新的状态快照
+      const snapshot = this.state.addImage({ url, title, rect: { x, y, width, height } });
+      
+      // 自动进入该图片的编辑模式（最新添加的图片位于数组末尾）
+      const newImg = snapshot.addedImages[snapshot.addedImages.length - 1];
+      this.editingImageId = newImg.id;
+      this.editOverlay.classList.remove('hidden');
+
+      this.syncImagesListDOM();
+      this.syncAddedImagesDOM();
+      this.applyObstaclesAndReflow();
+    };
+    img.src = url;
+  }
+
+  private syncImagesListDOM(): void {
+    this.imagesListContainer.innerHTML = '';
+    const images = this.state.getSnapshot().addedImages;
+    for (const img of images) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between gap-2 p-2 rounded-md bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700';
+
+      const title = document.createElement('span');
+      title.className = 'text-sm text-slate-700 dark:text-slate-300 truncate flex-1';
+      title.textContent = img.title;
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'text-sm text-teal-600 dark:text-teal-400 font-medium px-2';
+      editBtn.textContent = this.editingImageId === img.id ? '完成' : '编辑';
+      editBtn.addEventListener('click', () => {
+        if (this.editingImageId === img.id) {
+          this.editingImageId = null;
+          this.editOverlay.classList.add('hidden');
+          this.applyObstaclesAndReflow();
+        } else {
+          this.editingImageId = img.id;
+          this.editOverlay.classList.remove('hidden');
+        }
+        this.syncImagesListDOM();
+        this.syncAddedImagesDOM();
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-sm text-red-600 dark:text-red-400 font-medium px-2';
+      delBtn.textContent = '删除';
+      delBtn.addEventListener('click', () => {
+        if (this.editingImageId === img.id) {
+          this.editingImageId = null;
+          this.editOverlay.classList.add('hidden');
+        }
+        this.state.removeImage(img.id);
+        this.syncImagesListDOM();
+        this.syncAddedImagesDOM();
+        this.applyObstaclesAndReflow();
+      });
+
+      row.append(title, editBtn, delBtn);
+      this.imagesListContainer.append(row);
+    }
+  }
+
+  private syncAddedImagesDOM(): void {
+    const images = this.state.getSnapshot().addedImages;
+    const currentIds = new Set(images.map((i) => i.id));
+    for (const [id, el] of this.imageElements) {
+      if (!currentIds.has(id)) {
+        el.remove();
+        this.imageElements.delete(id);
+      }
+    }
+    for (const img of images) {
+      let el = this.imageElements.get(img.id);
+      if (!el) {
+        el = document.createElement('img');
+        el.src = img.url;
+        el.className = 'absolute max-w-none';
+        this.imagesContainer.append(el);
+        this.imageElements.set(img.id, el);
+      }
+      el.style.left = `${img.rect.x}px`;
+      el.style.top = `${img.rect.y}px`;
+      el.style.width = `${img.rect.width}px`;
+      el.style.height = `${img.rect.height}px`;
+      el.style.opacity = this.editingImageId && this.editingImageId !== img.id ? '0.5' : '1';
+    }
+  }
+
+  private applyObstaclesAndReflow(): void {
+    const obstacles = this.state.getSnapshot().addedImages.map((i) => i.rect);
+    setDynamicExtraObstacles(obstacles);
   }
 
   private createNumberInput(testId: string, ariaLabel: string, value: number): HTMLInputElement {
@@ -348,8 +677,20 @@ export class SaveImageController {
     this.menu.dataset.placement = menuPlacement;
     this.menu.classList.toggle('border-l', menuPlacement === 'right');
     this.menu.classList.toggle('border-t', menuPlacement === 'bottom');
+
+    this.imagesContainer.style.left = `${this.layout.mapRect.x}px`;
+    this.imagesContainer.style.top = `${this.layout.mapRect.y}px`;
+    this.imagesContainer.style.width = `${this.layout.mapRect.width}px`;
+    this.imagesContainer.style.height = `${this.layout.mapRect.height}px`;
+
+    this.editOverlay.style.left = `${this.layout.mapRect.x}px`;
+    this.editOverlay.style.top = `${this.layout.mapRect.y}px`;
+    this.editOverlay.style.width = `${this.layout.mapRect.width}px`;
+    this.editOverlay.style.height = `${this.layout.mapRect.height}px`;
+
     this.syncBlankSeparator();
     this.syncResizeHandles();
+    this.syncAddedImagesDOM();
     this.onLayoutChange(this.layout);
     this.onFontScaleChange(this.getPreviewFontScale());
     this.onVisualScaleChange(this.getPreviewVisualScale());
@@ -415,6 +756,14 @@ export class SaveImageController {
     event.preventDefault();
     event.stopPropagation();
     this.endMapResize?.();
+
+    if (this.editingImageId) {
+      this.editingImageId = null;
+      this.editOverlay.classList.add('hidden');
+      this.syncImagesListDOM();
+      this.syncAddedImagesDOM();
+      this.applyObstaclesAndReflow();
+    }
 
     const pointerId = event.pointerId;
     const startX = event.clientX;

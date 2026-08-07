@@ -4,6 +4,7 @@ import { SaveImageState } from '../SaveImageState';
 describe('save image state', () => {
   it('starts with the configured 1.6 default dimensions', () => {
     expect(new SaveImageState().getSnapshot()).toEqual({
+      addedImages: [],
       width: 2880,
       height: 1800,
       aspectRatio: 1.6,

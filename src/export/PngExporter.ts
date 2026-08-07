@@ -59,6 +59,7 @@ interface BasePngExportRequest {
   filename: string;
   onProgress?: (progress: number) => void;
   signal?: AbortSignal;
+  addedImages: import('./SaveImageState').SaveImageAddedImage[];
 }
 
 export interface PngExportRequest extends BasePngExportRequest {
@@ -171,6 +172,7 @@ async function exportSceneToPng(
       request.height,
       request.signal,
     );
+    await addAddedImages(svg, request.addedImages, request.signal);
     reportProgress(0.68);
     await inlineSvgImages(svg, request.signal);
     reportProgress(0.78);
@@ -425,4 +427,29 @@ function downloadBlob(blob: Blob, filename: string): void {
   link.download = filename;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function addAddedImages(
+  svg: SVGSVGElement,
+  images: import('./SaveImageState').SaveImageAddedImage[],
+  signal?: AbortSignal,
+): Promise<void> {
+  if (images.length === 0) return;
+  const layer = document.createElementNS(SVG_NAMESPACE, 'g');
+  layer.setAttribute('class', 'export-added-images');
+  for (const img of images) {
+    const image = document.createElementNS(SVG_NAMESPACE, 'image');
+    image.setAttribute('x', String(img.rect.x));
+    image.setAttribute('y', String(img.rect.y));
+    image.setAttribute('width', String(img.rect.width));
+    image.setAttribute('height', String(img.rect.height));
+    try {
+      image.setAttribute('href', await resourceUrlToDataUrl(img.url, signal));
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      console.warn(`附加图片加载失败: ${img.url}`, error);
+    }
+    layer.append(image);
+  }
+  svg.append(layer);
 }

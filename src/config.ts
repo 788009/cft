@@ -127,6 +127,7 @@ export interface AppConfig {
     maxDimension: number;
     maxTotalPixels: number;
     defaultFit: 'cover' | 'contain';
+    presetImages: Array<{ url: string; title: string }>;
   };
 }
 
@@ -258,27 +259,48 @@ export const defaultConfig: AppConfig = {
     maxDimension: 8192,
     maxTotalPixels: 32000000,
     defaultFit: 'cover',
+    presetImages: [
+      {
+        title: '蹭饭图标题',
+        url: 'data/images/title.svg',
+      },
+      {
+        title: '蹭饭图标题（暗色）',
+        url: 'data/images/title_dark.svg',
+      },
+      {
+        title: '制作人员',
+        url: 'data/images/staff.svg',
+      },
+      {
+        title: '制作人员（暗色）',
+        url: 'data/images/staff_dark.svg',
+      },
+      {
+        title: '网址',
+        url: 'data/images/site.svg',
+      },
+      {
+        title: '网址（暗色）',
+        url: 'data/images/site_dark.svg',
+      },
+    ],
   },
 };
 
-// 地图样式配置项
 export const MAP_STYLES = {
-  // 省级边界
   provincesBorder: {
     stroke: '#6b7280',
     strokeWidth: 0.4,
   },
-  // 十段线
   tenDash: {
     stroke: '#6b7280',
     strokeWidth: 1.2,
   },
-  // 地级市轮廓
   cities: {
     stroke: '#a1a1aa',
     strokeWidth: 0.3,
   },
-  // 区县轮廓
   districts: {
     stroke: '#a1a1aa',
     strokeWidth: 0.2,

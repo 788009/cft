@@ -163,6 +163,7 @@ export class RegionSaveImageScene implements SaveImageScene {
       data: this.data,
       selection: this.selection,
       regionSnapshot,
+      addedImages: snapshot.addedImages,
       settings: {
         ...this.appliedSettings,
         infoRectanglePlacement: regionSnapshot.infoRectanglePlacement,

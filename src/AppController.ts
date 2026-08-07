@@ -502,6 +502,7 @@ export class AppController {
       filename: `${defaultConfig.pageTitle}.png`,
       onProgress,
       signal,
+      addedImages: snapshot.addedImages,
     });
   }
 
