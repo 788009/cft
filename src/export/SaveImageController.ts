@@ -63,7 +63,7 @@ export class SaveImageController {
   private imagesContainer: HTMLDivElement;
   private editOverlay: HTMLDivElement;
   private imagesListContainer!: HTMLDivElement;
-  private editingImageId: string | null = null;
+  private editingImageIds = new Set<string>();
   private imageElements = new Map<string, HTMLImageElement>();
 
   constructor(
@@ -155,25 +155,25 @@ export class SaveImageController {
 
   private setupEditOverlay(): void {
     const activePointers = new Map<number, PointerEvent>();
-    let initialRect: Rect | null = null;
+    const initialRects = new Map<string, Rect>();
     
-    // 用于单指/鼠标平移
     let startX = 0;
     let startY = 0;
-
-    // 用于双指缩放与平移
     let initialDistance = 0;
     let initialMidX = 0;
     let initialMidY = 0;
 
     this.editOverlay.addEventListener('pointerdown', (e) => {
-      if (!this.editingImageId) return;
+      if (this.editingImageIds.size === 0) return;
       activePointers.set(e.pointerId, e);
       this.editOverlay.setPointerCapture(e.pointerId);
 
-      const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
-      if (!img) return;
-      initialRect = { ...img.rect };
+      // 记录所有选中图片的初始位置
+      initialRects.clear();
+      for (const id of this.editingImageIds) {
+        const img = this.state.getSnapshot().addedImages.find(i => i.id === id);
+        if (img) initialRects.set(id, { ...img.rect });
+      }
 
       if (activePointers.size === 1) {
         startX = e.clientX;
@@ -187,52 +187,50 @@ export class SaveImageController {
     });
 
     this.editOverlay.addEventListener('pointermove', (e) => {
-      if (!this.editingImageId || !initialRect || !activePointers.has(e.pointerId)) return;
+      if (this.editingImageIds.size === 0 || initialRects.size === 0 || !activePointers.has(e.pointerId)) return;
       activePointers.set(e.pointerId, e);
 
       if (activePointers.size === 1) {
-        // 单指拖拽平移
         const pts = Array.from(activePointers.values());
         const dx = pts[0].clientX - startX;
         const dy = pts[0].clientY - startY;
-        const newRect = { ...initialRect, x: initialRect.x + dx, y: initialRect.y + dy };
-        this.state.updateImageRect(this.editingImageId, newRect);
+        
+        for (const [id, initialRect] of initialRects) {
+          const newRect = { ...initialRect, x: initialRect.x + dx, y: initialRect.y + dy };
+          this.state.updateImageRect(id, newRect);
+        }
         this.syncAddedImagesDOM();
       } else if (activePointers.size === 2) {
-        // 双指缩放及平移
         const pts = Array.from(activePointers.values());
         const currentDistance = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
         const currentMidX = (pts[0].clientX + pts[1].clientX) / 2;
         const currentMidY = (pts[0].clientY + pts[1].clientY) / 2;
 
-        if (initialDistance < 5) return; // 防止除零或轻微抖动
+        if (initialDistance < 5) return;
 
         let actualScale = currentDistance / initialDistance;
         
-        // 统一缩放比例约束，保留 1px 下限以防止长宽等于 0 导致报错
-        if (initialRect.width * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.width);
-        if (initialRect.height * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.height);
+        // 遍历所有选中的图片，确保任一图片缩放后都不会小于 1px
+        for (const [_, initialRect] of initialRects) {
+          if (initialRect.width * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.width);
+          if (initialRect.height * actualScale < 1) actualScale = Math.max(actualScale, 1 / initialRect.height);
+        }
 
-        const newWidth = initialRect.width * actualScale;
-        const newHeight = initialRect.height * actualScale;
-
-        // 获取编辑层的屏幕坐标，以将鼠标/触摸中心点转换为图片的本地坐标
         const overlayRect = this.editOverlay.getBoundingClientRect();
         const localMidX = initialMidX - overlayRect.left;
         const localMidY = initialMidY - overlayRect.top;
-        
-        // 中心点位移
         const dx = currentMidX - initialMidX;
         const dy = currentMidY - initialMidY;
 
-        // 根据原中心点为缩放原点进行缩放计算，并叠加双指平移距离
-        const newRect = {
-          x: localMidX - (localMidX - initialRect.x) * actualScale + dx,
-          y: localMidY - (localMidY - initialRect.y) * actualScale + dy,
-          width: newWidth,
-          height: newHeight,
-        };
-        this.state.updateImageRect(this.editingImageId, newRect);
+        for (const [id, initialRect] of initialRects) {
+          const newRect = {
+            x: localMidX - (localMidX - initialRect.x) * actualScale + dx,
+            y: localMidY - (localMidY - initialRect.y) * actualScale + dy,
+            width: initialRect.width * actualScale,
+            height: initialRect.height * actualScale,
+          };
+          this.state.updateImageRect(id, newRect);
+        }
         this.syncAddedImagesDOM();
       }
     });
@@ -240,50 +238,53 @@ export class SaveImageController {
     const endDrag = (e: PointerEvent) => {
       activePointers.delete(e.pointerId);
       
-      // 如果从双指变为单指，需要重置单指拖拽的起始坐标，避免图片突然跳动
-      if (activePointers.size === 1 && this.editingImageId) {
-        const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
-        if (img) {
-          initialRect = { ...img.rect };
-          const remainingPointer = Array.from(activePointers.values())[0];
-          startX = remainingPointer.clientX;
-          startY = remainingPointer.clientY;
+      if (activePointers.size === 1 && this.editingImageIds.size > 0) {
+        initialRects.clear();
+        for (const id of this.editingImageIds) {
+          const img = this.state.getSnapshot().addedImages.find(i => i.id === id);
+          if (img) initialRects.set(id, { ...img.rect });
         }
+        const remainingPointer = Array.from(activePointers.values())[0];
+        startX = remainingPointer.clientX;
+        startY = remainingPointer.clientY;
       } else if (activePointers.size === 0) {
-        initialRect = null;
+        initialRects.clear();
       }
     };
 
     this.editOverlay.addEventListener('pointerup', endDrag);
     this.editOverlay.addEventListener('pointercancel', endDrag);
 
-    // 修复鼠标滚轮导致的变形问题
     this.editOverlay.addEventListener('wheel', (e) => {
-      if (!this.editingImageId) return;
+      if (this.editingImageIds.size === 0) return;
       e.preventDefault();
-      const img = this.state.getSnapshot().addedImages.find(i => i.id === this.editingImageId);
-      if (!img) return;
       
       const scale = e.deltaY > 0 ? 0.9 : 1.1;
-      const rect = img.rect;
       const rectX = e.offsetX;
       const rectY = e.offsetY;
 
-      // 统一缩放比例约束，保留 1px 下限以防止长宽等于 0 导致报错
       let actualScale = scale;
-      if (rect.width * scale < 1) actualScale = Math.max(actualScale, 1 / rect.width);
-      if (rect.height * scale < 1) actualScale = Math.max(actualScale, 1 / rect.height);
+      // 第一次遍历：计算适用于所有选中图片的缩放极限
+      for (const id of this.editingImageIds) {
+        const img = this.state.getSnapshot().addedImages.find(i => i.id === id);
+        if (!img) continue;
+        if (img.rect.width * scale < 1) actualScale = Math.max(actualScale, 1 / img.rect.width);
+        if (img.rect.height * scale < 1) actualScale = Math.max(actualScale, 1 / img.rect.height);
+      }
 
-      const newWidth = rect.width * actualScale;
-      const newHeight = rect.height * actualScale;
-
-      const newRect = {
-        x: rectX - (rectX - rect.x) * actualScale,
-        y: rectY - (rectY - rect.y) * actualScale,
-        width: newWidth,
-        height: newHeight,
-      };
-      this.state.updateImageRect(this.editingImageId, newRect);
+      // 第二次遍历：应用缩放
+      for (const id of this.editingImageIds) {
+        const img = this.state.getSnapshot().addedImages.find(i => i.id === id);
+        if (!img) continue;
+        const rect = img.rect;
+        const newRect = {
+          x: rectX - (rectX - rect.x) * actualScale,
+          y: rectY - (rectY - rect.y) * actualScale,
+          width: rect.width * actualScale,
+          height: rect.height * actualScale,
+        };
+        this.state.updateImageRect(id, newRect);
+      }
       this.syncAddedImagesDOM();
     }, { passive: false });
   }
@@ -522,7 +523,8 @@ export class SaveImageController {
       
       // 自动进入该图片的编辑模式（最新添加的图片位于数组末尾）
       const newImg = snapshot.addedImages[snapshot.addedImages.length - 1];
-      this.editingImageId = newImg.id;
+      this.editingImageIds.clear();
+      this.editingImageIds.add(newImg.id);
       this.editOverlay.classList.remove('hidden');
 
       this.syncImagesListDOM();
@@ -545,14 +547,18 @@ export class SaveImageController {
 
       const editBtn = document.createElement('button');
       editBtn.className = 'text-sm text-teal-600 dark:text-teal-400 font-medium px-2';
-      editBtn.textContent = this.editingImageId === img.id ? '完成' : '编辑';
+      editBtn.textContent = this.editingImageIds.has(img.id) ? '完成' : '编辑';
       editBtn.addEventListener('click', () => {
-        if (this.editingImageId === img.id) {
-          this.editingImageId = null;
+        if (this.editingImageIds.has(img.id)) {
+          this.editingImageIds.delete(img.id);
+        } else {
+          this.editingImageIds.add(img.id);
+        }
+        
+        if (this.editingImageIds.size === 0) {
           this.editOverlay.classList.add('hidden');
           this.applyObstaclesAndReflow();
         } else {
-          this.editingImageId = img.id;
           this.editOverlay.classList.remove('hidden');
         }
         this.syncImagesListDOM();
@@ -563,9 +569,11 @@ export class SaveImageController {
       delBtn.className = 'text-sm text-red-600 dark:text-red-400 font-medium px-2';
       delBtn.textContent = '删除';
       delBtn.addEventListener('click', () => {
-        if (this.editingImageId === img.id) {
-          this.editingImageId = null;
-          this.editOverlay.classList.add('hidden');
+        if (this.editingImageIds.has(img.id)) {
+          this.editingImageIds.delete(img.id);
+          if (this.editingImageIds.size === 0) {
+            this.editOverlay.classList.add('hidden');
+          }
         }
         this.state.removeImage(img.id);
         this.syncImagesListDOM();
@@ -600,7 +608,8 @@ export class SaveImageController {
       el.style.top = `${img.rect.y}px`;
       el.style.width = `${img.rect.width}px`;
       el.style.height = `${img.rect.height}px`;
-      el.style.opacity = this.editingImageId && this.editingImageId !== img.id ? '0.5' : '1';
+      // 如果处于编辑模式且当前图片未被选中，则使其半透明
+      el.style.opacity = this.editingImageIds.size > 0 && !this.editingImageIds.has(img.id) ? '0.5' : '1';
     }
   }
 
@@ -757,8 +766,8 @@ export class SaveImageController {
     event.stopPropagation();
     this.endMapResize?.();
 
-    if (this.editingImageId) {
-      this.editingImageId = null;
+    if (this.editingImageIds.size > 0) {
+      this.editingImageIds.clear();
       this.editOverlay.classList.add('hidden');
       this.syncImagesListDOM();
       this.syncAddedImagesDOM();
