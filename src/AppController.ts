@@ -21,7 +21,10 @@ import { InfoRectangleEditorController } from '@/settings/InfoRectangleEditorCon
 import { SearchController } from '@/search/SearchController';
 import type { SearchResult } from '@/logic/search';
 import type { Rect } from '@/logic/layout';
-import { SettingsStateStore } from '@/settings/SettingsState';
+import {
+  SettingsStateStore,
+  type AppSettingsState,
+} from '@/settings/SettingsState';
 import { SaveImageController } from '@/export/SaveImageController';
 import type { SaveImageModeLayout } from '@/export/geometry';
 import type { SaveImageStateSnapshot } from '@/export/SaveImageState';
@@ -32,6 +35,25 @@ import type {
 } from '@/export/SaveImageScene';
 import type { RegionSelection } from '@/details/types';
 import { RegionSaveImageScene } from '@/export/RegionSaveImageScene';
+import { AppCache } from '@/cache/AppCache';
+
+export function createDefaultAppSettings(
+  width: number,
+  height: number,
+): AppSettingsState {
+  return {
+    interactionMode: defaultConfig.mapInteractionMode,
+    themeMode: defaultConfig.themeMode,
+    backgroundFile: null,
+    cardGroupingMode: defaultConfig.cardGroupingMode,
+    showRegionNames: defaultConfig.showRegionNames,
+    onlyShowRegionNamesWithSchools: defaultConfig.onlyShowRegionNamesWithSchools,
+    showInfoRectangle: defaultConfig.showInfoRectangle,
+    showMiddleSchool: defaultConfig.showMiddleSchool,
+    enableLocalLayoutOptimization: defaultConfig.enableLocalLayoutOptimization,
+    infoRectanglePlacement: getDefaultInfoRectanglePlacement(width, height),
+  };
+}
 
 export class AppController {
   private readonly mapContainer: HTMLElement;
@@ -44,13 +66,14 @@ export class AppController {
   private readonly theme: ThemeController;
   private readonly background: BackgroundController;
   private readonly settingsState: SettingsStateStore;
-  private interactionMode: MapInteractionMode = defaultConfig.mapInteractionMode;
-  private cardGroupingMode: CardGroupingMode = defaultConfig.cardGroupingMode;
-  private showRegionNames = defaultConfig.showRegionNames;
-  private onlyShowRegionNamesWithSchools = defaultConfig.onlyShowRegionNamesWithSchools;
-  private showInfoRectangle = defaultConfig.showInfoRectangle;
-  private showMiddleSchool = defaultConfig.showMiddleSchool;
-  private enableLocalLayoutOptimization = defaultConfig.enableLocalLayoutOptimization;
+  private readonly cache: AppCache;
+  private interactionMode: MapInteractionMode;
+  private cardGroupingMode: CardGroupingMode;
+  private showRegionNames: boolean;
+  private onlyShowRegionNamesWithSchools: boolean;
+  private showInfoRectangle: boolean;
+  private showMiddleSchool: boolean;
+  private enableLocalLayoutOptimization: boolean;
   private infoRectanglePlacement: InfoRectanglePlacement;
   private infoRectangleMode: InfoRectangleMode;
   private infoRectangleEditing = false;
@@ -70,25 +93,20 @@ export class AppController {
   private saveImageFontScale = 1;
   private saveImageVisualScale = 1;
 
-  constructor() {
+  constructor(cache: AppCache, initialSettings: AppSettingsState) {
+    this.cache = cache;
+    this.interactionMode = initialSettings.interactionMode;
+    this.cardGroupingMode = initialSettings.cardGroupingMode;
+    this.showRegionNames = initialSettings.showRegionNames;
+    this.onlyShowRegionNamesWithSchools = initialSettings.onlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = initialSettings.showInfoRectangle;
+    this.showMiddleSchool = initialSettings.showMiddleSchool;
+    this.enableLocalLayoutOptimization = initialSettings.enableLocalLayoutOptimization;
     this.mapContainer = this.requireElement('map-container');
     this.uiContainer = this.requireElement('ui-container');
     this.viewState = new ViewState(window.innerWidth, window.innerHeight);
-    this.settingsState = new SettingsStateStore({
-      interactionMode: this.interactionMode,
-      themeMode: defaultConfig.themeMode,
-      backgroundFile: null,
-      cardGroupingMode: this.cardGroupingMode,
-      showRegionNames: this.showRegionNames,
-      onlyShowRegionNamesWithSchools: this.onlyShowRegionNamesWithSchools,
-      showInfoRectangle: this.showInfoRectangle,
-      showMiddleSchool: this.showMiddleSchool,
-      enableLocalLayoutOptimization: this.enableLocalLayoutOptimization,
-    });
-    this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(
-      window.innerWidth,
-      window.innerHeight,
-    );
+    this.settingsState = new SettingsStateStore(initialSettings);
+    this.infoRectanglePlacement = { ...initialSettings.infoRectanglePlacement };
     this.infoRectangleMode = getInfoRectangleMode(window.innerWidth, window.innerHeight);
     this.details = new DetailController(
       this.uiContainer,
@@ -104,8 +122,9 @@ export class AppController {
       this.mapContainer,
       defaultConfig.backgroundImages,
     );
+    this.background.setUploadedFile(initialSettings.backgroundFile);
     this.theme = new ThemeController(
-      defaultConfig.themeMode,
+      initialSettings.themeMode,
       (resolvedTheme) => this.background.setTheme(resolvedTheme),
     );
     this.infoRectangleEditor = new InfoRectangleEditorController(this.uiContainer);
@@ -174,7 +193,20 @@ export class AppController {
         },
         onEditInfoRectangle: () => this.beginInfoRectangleEditing(),
         onSaveImage: () => this.beginSaveImageMode(),
+        isCacheEnabled: () => this.cache.isEnabled(),
+        onCacheEnabledChange: async (enabled) => {
+          const reload = await this.cache.setEnabled(
+            enabled,
+            this.settingsState.getSnapshot(),
+          );
+          if (reload) window.location.reload();
+        },
+        onClearCache: async () => this.cache.clear(),
       },
+    );
+    this.cache.bindSettings(
+      this.settingsState,
+      (settings) => this.applyCachedSettings(settings),
     );
   }
 
@@ -204,6 +236,7 @@ export class AppController {
     this.settings.destroy();
     this.theme.destroy();
     this.background.destroy();
+    this.cache.destroy();
   }
 
   private readonly handleResize = (): void => {
@@ -248,6 +281,7 @@ export class AppController {
         infoRectanglePlacement: this.infoRectanglePlacement,
         onInfoRectanglePlacementChange: (placement) => {
           this.infoRectanglePlacement = placement;
+          this.settingsState.update({ infoRectanglePlacement: placement });
           this.details.setInfoRectanglePlacement(placement);
         },
       });
@@ -516,6 +550,7 @@ export class AppController {
     this.finishInfoRectangleEditing();
     this.infoRectangleMode = nextMode;
     this.infoRectanglePlacement = getDefaultInfoRectanglePlacement(width, height);
+    this.settingsState.update({ infoRectanglePlacement: this.infoRectanglePlacement });
     this.renderer?.setInfoRectanglePlacement(this.infoRectanglePlacement);
     this.details.setInfoRectanglePlacement(this.infoRectanglePlacement);
   }
@@ -547,6 +582,7 @@ export class AppController {
     const height = mainViewport.height;
     const placement = getDefaultInfoRectanglePlacement(width, height);
     this.infoRectanglePlacement = placement;
+    this.settingsState.update({ infoRectanglePlacement: placement });
     this.renderer?.setInfoRectanglePlacement(placement);
     this.details.setInfoRectanglePlacement(placement);
   }
@@ -558,6 +594,7 @@ export class AppController {
     const height = mapRect?.height ?? viewport.height;
     const placement = getDefaultInfoRectanglePlacement(width, height);
     this.infoRectanglePlacement = placement;
+    this.settingsState.update({ infoRectanglePlacement: placement });
     this.renderer?.setInfoRectanglePlacement(placement);
     this.details.setInfoRectanglePlacement(placement);
   }
@@ -566,5 +603,44 @@ export class AppController {
     const element = document.getElementById(id);
     if (!element) throw new Error(`找不到容器: ${id}`);
     return element;
+  }
+
+  private applyCachedSettings(settings: AppSettingsState): void {
+    this.settingsState.update(settings);
+    this.interactionMode = settings.interactionMode;
+    this.cardGroupingMode = settings.cardGroupingMode;
+    this.showRegionNames = settings.showRegionNames;
+    this.onlyShowRegionNamesWithSchools = settings.onlyShowRegionNamesWithSchools;
+    this.showInfoRectangle = settings.showInfoRectangle;
+    this.showMiddleSchool = settings.showMiddleSchool;
+    this.enableLocalLayoutOptimization = settings.enableLocalLayoutOptimization;
+    this.infoRectanglePlacement = { ...settings.infoRectanglePlacement };
+
+    this.theme.setMode(settings.themeMode);
+    this.background.setUploadedFile(settings.backgroundFile);
+    this.renderer?.setInteractionMode(settings.interactionMode);
+    this.renderer?.setCardGroupingMode(settings.cardGroupingMode);
+    this.renderer?.setShowRegionNames(settings.showRegionNames);
+    this.renderer?.setOnlyShowRegionNamesWithSchools(
+      settings.onlyShowRegionNamesWithSchools,
+    );
+    this.renderer?.setShowInfoRectangle(settings.showInfoRectangle);
+    this.renderer?.setShowMiddleSchool(settings.showMiddleSchool);
+    this.renderer?.setLocalLayoutOptimizationEnabled(
+      settings.enableLocalLayoutOptimization,
+    );
+    this.renderer?.setInfoRectanglePlacement(settings.infoRectanglePlacement);
+    this.details.setCardGroupingMode(settings.cardGroupingMode);
+    this.details.setShowRegionNames(settings.showRegionNames);
+    this.details.setOnlyShowRegionNamesWithSchools(
+      settings.onlyShowRegionNamesWithSchools,
+    );
+    this.details.setShowInfoRectangle(settings.showInfoRectangle);
+    this.details.setLocalLayoutOptimizationEnabled(
+      settings.enableLocalLayoutOptimization,
+    );
+    this.details.setInfoRectanglePlacement(settings.infoRectanglePlacement);
+    this.syncSaveImageSceneSettings();
+    this.syncSaveImageSceneAppearance();
   }
 }

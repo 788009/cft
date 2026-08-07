@@ -3,6 +3,7 @@ import type {
   MapInteractionMode,
   ThemeMode,
 } from '@/config';
+import type { InfoRectanglePlacement } from '@/map/InfoRectangle';
 
 export interface AppSettingsState {
   interactionMode: MapInteractionMode;
@@ -14,6 +15,7 @@ export interface AppSettingsState {
   showInfoRectangle: boolean;
   showMiddleSchool: boolean;
   enableLocalLayoutOptimization: boolean;
+  infoRectanglePlacement: InfoRectanglePlacement;
 }
 
 export type SettingsStateListener = (state: Readonly<AppSettingsState>) => void;
@@ -23,11 +25,11 @@ export class SettingsStateStore {
   private readonly listeners = new Set<SettingsStateListener>();
 
   constructor(initialState: AppSettingsState) {
-    this.state = { ...initialState };
+    this.state = cloneState(initialState);
   }
 
   public getSnapshot(): Readonly<AppSettingsState> {
-    return { ...this.state };
+    return cloneState(this.state);
   }
 
   public update(patch: Partial<AppSettingsState>): Readonly<AppSettingsState> {
@@ -35,7 +37,7 @@ export class SettingsStateStore {
       this.state[key as keyof AppSettingsState] !== value
     ));
     if (!changed) return this.getSnapshot();
-    this.state = { ...this.state, ...patch };
+    this.state = cloneState({ ...this.state, ...patch });
     const snapshot = this.getSnapshot();
     for (const listener of this.listeners) listener(snapshot);
     return snapshot;
@@ -45,4 +47,11 @@ export class SettingsStateStore {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
+}
+
+function cloneState(state: Readonly<AppSettingsState>): AppSettingsState {
+  return {
+    ...state,
+    infoRectanglePlacement: { ...state.infoRectanglePlacement },
+  };
 }

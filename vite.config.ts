@@ -3,6 +3,7 @@ import type { Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const dataDirectory = path.resolve(process.cwd(), 'data');
 
@@ -19,12 +20,41 @@ function contentTypeFor(filePath: string): string {
   return 'application/octet-stream';
 }
 
+function hashContent(content: string | Uint8Array): string {
+  return `sha256-${crypto.createHash('sha256').update(content).digest('base64')}`;
+}
+
+function createDataResourceEntries(): Record<string, string> {
+  return Object.fromEntries(listDataFiles(dataDirectory).map((filePath) => {
+    const relativePath = path.relative(dataDirectory, filePath).split(path.sep).join('/');
+    return [`data/${relativePath}`, hashContent(fs.readFileSync(filePath))];
+  }));
+}
+
+function createResourceManifest(resources: Record<string, string>) {
+  const sortedResources = Object.fromEntries(
+    Object.entries(resources).sort(([left], [right]) => left.localeCompare(right)),
+  );
+  return {
+    schemaVersion: 1,
+    buildId: hashContent(JSON.stringify(sortedResources)),
+    resources: sortedResources,
+  };
+}
+
 function dataDevServerPlugin(): Plugin {
   return {
     name: 'local-data-dev-server',
     apply: 'serve',
     configureServer(server) {
       const mountPath = `${server.config.base}data`.replace(/\/+/g, '/');
+      const manifestPath = `${server.config.base}resource-manifest.json`.replace(/\/+/g, '/');
+
+      server.middlewares.use(manifestPath, (_request, response) => {
+        response.setHeader('Cache-Control', 'no-store');
+        response.setHeader('Content-Type', 'application/json; charset=utf-8');
+        response.end(JSON.stringify(createResourceManifest(createDataResourceEntries())));
+      });
 
       server.middlewares.use(mountPath, (request, response, next) => {
         const pathname = decodeURIComponent((request.url ?? '').split('?')[0]);
@@ -61,6 +91,18 @@ function dataBuildAssetsPlugin(): Plugin {
           source: fs.readFileSync(filePath),
         });
       }
+    },
+    generateBundle(_options, bundle) {
+      const resources = createDataResourceEntries();
+      for (const [fileName, output] of Object.entries(bundle)) {
+        const content = output.type === 'asset' ? output.source : output.code;
+        resources[fileName] = hashContent(content);
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: 'resource-manifest.json',
+        source: JSON.stringify(createResourceManifest(resources)),
+      });
     },
   };
 }

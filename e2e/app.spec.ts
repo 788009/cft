@@ -406,11 +406,12 @@ test('switches to the stable layout mode from settings', async ({ page }) => {
   const stableMode = page.getByTestId('interaction-mode-stable');
   const reflowMode = page.getByTestId('interaction-mode-hide-and-reflow');
   await expect(dialog).toBeVisible();
-  expect((await dialog.locator('section > h3').allTextContents()).slice(0, 4)).toEqual([
+  expect((await dialog.locator('section > h3').allTextContents()).slice(0, 5)).toEqual([
     '外观',
     '保存图片',
     '地图信息',
     '信息卡片',
+    '缓存',
   ]);
   await expect(reflowMode).toHaveAttribute('aria-checked', 'true');
   await expect(stableMode).toHaveAttribute('aria-checked', 'false');
@@ -1160,6 +1161,28 @@ test('uploads one background for both themes and restores configured backgrounds
     .toHaveText('仅支持 PNG、JPEG 和 WebP 图片');
   expect(await map.evaluate((element) => element.style.backgroundImage))
     .toBe(configuredLightBackground);
+});
+
+test('persists settings and uploaded background, then clears application cache', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByTestId('settings-button').click();
+  await expect(page.getByTestId('cache-enabled-toggle')).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('theme-mode-dark').click();
+  await page.getByTestId('background-image-input').setInputFiles('src/assets/hero.png');
+  await expect(page.getByTestId('background-image-name')).toHaveText('hero.png');
+
+  await page.reload();
+  await page.getByTestId('settings-button').click();
+  await expect(page.getByTestId('theme-mode-dark')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('background-image-name')).toHaveText('hero.png');
+
+  await page.getByTestId('clear-app-cache').click();
+  await expect(page.getByTestId('cache-status'))
+    .toHaveText('缓存已清除，设置已恢复默认值');
+  await expect(page.getByTestId('theme-mode-system')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('background-image-name')).toBeHidden();
+  await expect(page.getByTestId('cache-enabled-toggle')).toHaveAttribute('aria-checked', 'true');
 });
 
 test('shows region names for the current map level and toggles them from settings', async ({ page }) => {

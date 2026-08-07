@@ -12,6 +12,12 @@ function createState(): AppSettingsState {
     showInfoRectangle: false,
     showMiddleSchool: true,
     enableLocalLayoutOptimization: false,
+    infoRectanglePlacement: {
+      xRatio: 0.25,
+      yRatio: 0.25,
+      widthRatio: 0.5,
+      heightRatio: 0.5,
+    },
   };
 }
 
@@ -36,6 +42,8 @@ describe('settings state store', () => {
     const store = new SettingsStateStore(createState());
     const snapshot = store.getSnapshot() as AppSettingsState;
     snapshot.showMiddleSchool = false;
+    snapshot.infoRectanglePlacement.xRatio = 0;
     expect(store.getSnapshot().showMiddleSchool).toBe(true);
+    expect(store.getSnapshot().infoRectanglePlacement.xRatio).toBe(0.25);
   });
 });

@@ -7,9 +7,10 @@ import {
   processStudentData,
 } from './parser';
 import type { ProcessedData, ProvinceAdcodeMap, CityAdcodeMap } from '@/types';
+import { fetchAppResource } from '@/cache/ResourceCache';
 
 async function fetchRequired(path: string): Promise<Response> {
-  const response = await fetch(path);
+  const response = await fetchAppResource(path);
   if (!response.ok) {
     throw new Error(`数据资源加载失败: ${path} (${response.status})`);
   }

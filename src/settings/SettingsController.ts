@@ -35,6 +35,9 @@ export interface SettingsCallbacks {
   onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   onEditInfoRectangle: () => void;
   onSaveImage: () => void;
+  isCacheEnabled: () => boolean;
+  onCacheEnabledChange: (enabled: boolean) => Promise<void>;
+  onClearCache: () => Promise<void>;
 }
 
 const MODE_OPTIONS: SettingOption<MapInteractionMode>[] = [
@@ -75,6 +78,8 @@ export class SettingsController {
   private readonly onLocalLayoutOptimizationChange: (enabled: boolean) => void;
   private readonly onEditInfoRectangle: () => void;
   private readonly onSaveImage: () => void;
+  private readonly onCacheEnabledChange: (enabled: boolean) => Promise<void>;
+  private readonly onClearCache: () => Promise<void>;
   private readonly unsubscribeState: () => void;
   private mode: MapInteractionMode;
   private themeMode: ThemeMode;
@@ -87,6 +92,8 @@ export class SettingsController {
   private shell: ModalShell | null = null;
   private messageHtmlPromise: Promise<string> | null = null;
   private backgroundFileName: string | null = null;
+  private cacheEnabled: boolean;
+  private cacheOperationPending = false;
 
   constructor(
     container: HTMLElement,
@@ -115,6 +122,9 @@ export class SettingsController {
     this.onLocalLayoutOptimizationChange = callbacks.onLocalLayoutOptimizationChange;
     this.onEditInfoRectangle = callbacks.onEditInfoRectangle;
     this.onSaveImage = callbacks.onSaveImage;
+    this.cacheEnabled = callbacks.isCacheEnabled();
+    this.onCacheEnabledChange = callbacks.onCacheEnabledChange;
+    this.onClearCache = callbacks.onClearCache;
     this.backgroundFileName = initialState.backgroundFile?.name ?? null;
     this.unsubscribeState = stateStore.subscribe((state) => this.applyState(state));
     this.button = document.createElement('button');
@@ -207,6 +217,7 @@ export class SettingsController {
         ),
         this.createLayoutOptimizationSetting(),
       ]),
+      this.createSection('缓存', [this.createCacheSettings()]),
       ...(includeMessage ? [this.createMessageSection()] : []),
     );
     this.updateChoices(content);
@@ -361,6 +372,35 @@ export class SettingsController {
     body.append(...settings);
     section.append(heading, body);
     return section;
+  }
+
+  private createCacheSettings(): HTMLElement {
+    const settings = document.createElement('div');
+    settings.className = 'grid gap-3';
+    const toggle = this.createSwitch(
+      'cache-enabled-toggle',
+      '启用缓存',
+      () => void this.selectCacheEnabled(!this.cacheEnabled),
+    );
+    const description = document.createElement('p');
+    description.className = 'text-xs leading-5 text-slate-500 dark:text-slate-400';
+    description.textContent = '缓存设置和本地静态资源。关闭后将清除应用缓存并重新加载页面。';
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.dataset.testid = 'clear-app-cache';
+    clear.className = [
+      'min-h-11 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700',
+      'hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-teal-700',
+      'dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+      'dark:focus-visible:outline-teal-400 disabled:cursor-not-allowed disabled:opacity-50',
+    ].join(' ');
+    clear.textContent = '清除缓存';
+    const status = document.createElement('p');
+    status.dataset.testid = 'cache-status';
+    status.className = 'hidden text-xs text-slate-500 dark:text-slate-400';
+    clear.addEventListener('click', () => void this.clearCache(clear, status));
+    settings.append(toggle, description, clear, status);
+    return settings;
   }
 
   private createChoiceGroup<T extends string>(
@@ -538,6 +578,40 @@ export class SettingsController {
     this.onShowMiddleSchoolChange(show);
   }
 
+  private async selectCacheEnabled(enabled: boolean): Promise<void> {
+    if (enabled === this.cacheEnabled || this.cacheOperationPending) return;
+    this.cacheOperationPending = true;
+    this.updateCacheControls();
+    try {
+      await this.onCacheEnabledChange(enabled);
+      this.cacheEnabled = enabled;
+    } catch (error) {
+      console.error('缓存开关更新失败:', error);
+    } finally {
+      this.cacheOperationPending = false;
+      this.updateCacheControls();
+    }
+  }
+
+  private async clearCache(button: HTMLButtonElement, status: HTMLElement): Promise<void> {
+    if (this.cacheOperationPending) return;
+    this.cacheOperationPending = true;
+    this.updateCacheControls();
+    status.textContent = '正在清除缓存';
+    status.classList.remove('hidden');
+    try {
+      await this.onClearCache();
+      status.textContent = '缓存已清除，设置已恢复默认值';
+    } catch (error) {
+      status.textContent = '缓存清除失败';
+      console.error('缓存清除失败:', error);
+    } finally {
+      this.cacheOperationPending = false;
+      button.disabled = false;
+      this.updateCacheControls();
+    }
+  }
+
   private applyState(state: Readonly<AppSettingsState>): void {
     this.mode = state.interactionMode;
     this.themeMode = state.themeMode;
@@ -586,13 +660,31 @@ export class SettingsController {
     const middleSchoolToggle = root.querySelector<HTMLButtonElement>(
       '[data-testid="middle-school-toggle"]',
     );
+    const cacheToggle = root.querySelector<HTMLButtonElement>(
+      '[data-testid="cache-enabled-toggle"]',
+    );
     this.updateSwitch(toggle, this.showRegionNames);
     this.updateSwitch(filterToggle, this.onlyShowRegionNamesWithSchools);
     this.updateSwitch(infoRectangleToggle, this.showInfoRectangle);
     this.updateSwitch(localLayoutOptimizationToggle, this.enableLocalLayoutOptimization);
     this.updateSwitch(middleSchoolToggle, this.showMiddleSchool);
+    this.updateSwitch(cacheToggle, this.cacheEnabled);
     filterSetting?.classList.toggle('hidden', !this.showRegionNames);
     filterSetting?.setAttribute('aria-hidden', String(!this.showRegionNames));
+  }
+
+  private updateCacheControls(): void {
+    for (const toggle of this.container.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="cache-enabled-toggle"]',
+    )) {
+      toggle.disabled = this.cacheOperationPending;
+      this.updateSwitch(toggle, this.cacheEnabled);
+    }
+    for (const button of this.container.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="clear-app-cache"]',
+    )) {
+      button.disabled = this.cacheOperationPending;
+    }
   }
 
   private updateSwitch(toggle: HTMLButtonElement | null, checked: boolean): void {

@@ -11,6 +11,7 @@ import {
 } from '@/map/RegionDetailRenderer';
 import type { RegionSelection } from '@/details/types';
 import type { SaveImageSceneSettings } from './SaveImageScene';
+import { fetchAppResource } from '@/cache/ResourceCache';
 import { validateExportDimensions } from './validation';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
@@ -281,7 +282,7 @@ async function inlineSvgImages(svg: SVGSVGElement, signal?: AbortSignal): Promis
 }
 
 async function resourceUrlToDataUrl(url: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch(url, { signal });
+  const response = await fetchAppResource(url, { signal });
   if (!response.ok) throw new Error(`资源请求失败 (${response.status})`);
   return blobToDataUrl(await response.blob(), signal);
 }

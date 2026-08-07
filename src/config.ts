@@ -85,6 +85,7 @@ export interface AppConfig {
   mapInteractionMode: MapInteractionMode;
   cardGroupingMode: CardGroupingMode;
   themeMode: ThemeMode;
+  cacheEnabledByDefault: boolean;
   backgroundImages: {
     light: string | null;
     dark: string | null;
@@ -210,6 +211,7 @@ export const defaultConfig: AppConfig = {
   mapInteractionMode: 'stable',
   cardGroupingMode: 'region',
   themeMode: 'system',
+  cacheEnabledByDefault: true,
   backgroundImages: {
     light: null,
     dark: null,
