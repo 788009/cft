@@ -4,6 +4,12 @@
 
 [Live demo](https://23g1c15.sszx.tech/)
 
+<picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/example_dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="images/example.webp">
+    <img alt="示例图片" src="images/example.webp">
+</picture>
+
 ## 特点
 
 - 支持缩放地图，根据缩放倍率显示不同层级。
