@@ -24,7 +24,7 @@
     pnpm install
     ```
 
-2. 使用 [cft-data-prepare](https://github.com/788009/cft-data-prepare) 生成 `data/` 文件夹并替换现有的 `data/` 文件夹。
+2. 使用 [cft-data-prepare](https://github.com/788009/cft-data-prepare) 基于实际数据生成 `data/` 文件夹并替换现有的 `data/` 文件夹。
 3. 修改 `src/config.ts` 中的配置。
 4. `pnpm dev` 启动开发服务，`pnpm build` 构建，`pnpm preview` 预览。
 5. 可部署到 Cloudflare, Vercel, Netflix 等平台。
