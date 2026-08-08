@@ -138,8 +138,8 @@ export function resolveDataBasePath(baseUrl: string): string {
 export const defaultConfig: AppConfig = {
   pageTitle: '双十中学 23 级高一 15 班蹭饭图',
   favicon: {
-    light: '/favicon.svg',
-    dark: 'favicon_dark.svg'
+    light: 'data/images/favicon.svg',
+    dark: 'data/images/favicon_dark.svg'
   },
   dataBasePath: resolveDataBasePath(import.meta.env.BASE_URL),
   infoRectangleWidthRatio: 0.5,
